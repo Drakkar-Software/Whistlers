@@ -63,32 +63,48 @@ describe("NatsQueueAdapter lifecycle", () => {
   it("subscribe calls nc.subscribe for each topic", async () => {
     const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
     await adapter.connect()
-    await adapter.subscribe(["orders.created", "orders.updated"])
+    await adapter.subscribe([{ topic: "orders.created" }, { topic: "orders.updated" }])
     expect(mockConnection.subscribe).toHaveBeenCalledWith("orders.created")
     expect(mockConnection.subscribe).toHaveBeenCalledWith("orders.updated")
     expect(mockConnection.subscribe).toHaveBeenCalledTimes(2)
   })
 
+  it("subscribe with group passes queue option to nc.subscribe", async () => {
+    const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
+    await adapter.connect()
+    await adapter.subscribe([{ topic: "orders.*", group: "workers" }])
+    expect(mockConnection.subscribe).toHaveBeenCalledWith("orders.*", { queue: "workers" })
+  })
+
   it("subscribe is idempotent — does not re-subscribe to the same topic", async () => {
     const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
     await adapter.connect()
-    await adapter.subscribe(["a"])
-    await adapter.subscribe(["a"])
+    await adapter.subscribe([{ topic: "a" }])
+    await adapter.subscribe([{ topic: "a" }])
     expect(mockConnection.subscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it("same topic with different groups creates distinct subscriptions", async () => {
+    const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
+    await adapter.connect()
+    await adapter.subscribe([{ topic: "a.*", group: "g1" }, { topic: "a.*", group: "g2" }])
+    expect(mockConnection.subscribe).toHaveBeenCalledTimes(2)
+    expect(mockConnection.subscribe).toHaveBeenCalledWith("a.*", { queue: "g1" })
+    expect(mockConnection.subscribe).toHaveBeenCalledWith("a.*", { queue: "g2" })
   })
 
   it("unsubscribe calls sub.unsubscribe and removes the subscription", async () => {
     const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
     await adapter.connect()
-    await adapter.subscribe(["a"])
-    await adapter.unsubscribe(["a"])
+    await adapter.subscribe([{ topic: "a" }])
+    await adapter.unsubscribe([{ topic: "a" }])
     expect(mockSubscription.unsubscribe).toHaveBeenCalled()
   })
 
   it("close drains the connection", async () => {
     const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
     await adapter.connect()
-    await adapter.subscribe(["a"])
+    await adapter.subscribe([{ topic: "a" }])
     await adapter.close()
     expect(mockSubscription.unsubscribe).toHaveBeenCalled()
     expect(mockConnection.drain).toHaveBeenCalled()
@@ -96,7 +112,7 @@ describe("NatsQueueAdapter lifecycle", () => {
 
   it("throws if subscribe is called before connect", async () => {
     const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
-    await expect(adapter.subscribe(["a"])).rejects.toThrow("Not connected")
+    await expect(adapter.subscribe([{ topic: "a" }])).rejects.toThrow("Not connected")
   })
 
   it("dispatches decoded messages to registered handlers", async () => {
@@ -119,7 +135,7 @@ describe("NatsQueueAdapter lifecycle", () => {
     const received: { topic: string; payload: string }[] = []
     adapter.onMessage((m) => { received.push({ topic: m.topic, payload: m.payload }) })
 
-    await adapter.subscribe(["orders.created"])
+    await adapter.subscribe([{ topic: "orders.created" }])
     // Give the async iterator loop a tick to run
     await new Promise((r) => setTimeout(r, 10))
 

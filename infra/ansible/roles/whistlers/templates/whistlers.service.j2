@@ -1,0 +1,32 @@
+[Unit]
+Description=Whistlers — message-queue-to-FCM bridge
+Documentation=https://github.com/Herklos/Whistlers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ whistlers_user }}
+Group={{ whistlers_group }}
+WorkingDirectory={{ whistlers_install_dir }}
+EnvironmentFile={{ whistlers_config_dir }}/.env
+
+ExecStart=/usr/bin/node \
+  {{ whistlers_install_dir }}/packages/ts/whistlers/dist/bin/server.js \
+  {{ whistlers_config_dir }}/config.json
+
+Restart={{ whistlers_service_restart }}
+RestartSec={{ whistlers_service_restart_sec }}
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={{ whistlers_config_dir }}
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=whistlers
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,4 @@
-import type { MessageHandler, QueueAdapter, QueueMessage } from "./base.js"
+import type { MessageHandler, QueueAdapter, QueueMessage, TopicSubscription } from "./base.js"
 
 export interface NatsQueueAdapterOptions {
   /** One or more NATS server URLs, e.g. `"nats://localhost:4222"`. */
@@ -23,15 +23,18 @@ export class NatsQueueAdapter implements QueueAdapter {
     this.nc = await connect({ servers: this.opts.servers })
   }
 
-  async subscribe(topics: string[]): Promise<void> {
+  async subscribe(subscriptions: TopicSubscription[]): Promise<void> {
     if (!this.nc) throw new Error("Not connected. Call connect() first.")
     const { StringCodec } = await import("nats")
     const sc = StringCodec()
 
-    for (const topic of topics) {
-      if (this.activeSubscriptions.has(topic)) continue
-      const sub = this.nc.subscribe(topic)
-      this.activeSubscriptions.set(topic, sub)
+    for (const { topic, group } of subscriptions) {
+      const key = group ? `${group}:${topic}` : topic
+      if (this.activeSubscriptions.has(key)) continue
+      const sub = group
+        ? this.nc.subscribe(topic, { queue: group })
+        : this.nc.subscribe(topic)
+      this.activeSubscriptions.set(key, sub)
 
       // Drain messages in background
       void (async () => {
@@ -58,12 +61,13 @@ export class NatsQueueAdapter implements QueueAdapter {
     }
   }
 
-  async unsubscribe(topics: string[]): Promise<void> {
-    for (const topic of topics) {
-      const sub = this.activeSubscriptions.get(topic)
+  async unsubscribe(subscriptions: TopicSubscription[]): Promise<void> {
+    for (const { topic, group } of subscriptions) {
+      const key = group ? `${group}:${topic}` : topic
+      const sub = this.activeSubscriptions.get(key)
       if (sub) {
         sub.unsubscribe()
-        this.activeSubscriptions.delete(topic)
+        this.activeSubscriptions.delete(key)
       }
     }
   }

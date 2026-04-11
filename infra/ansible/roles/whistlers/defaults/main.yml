@@ -1,0 +1,45 @@
+---
+# System user/group that runs the Whistlers process
+whistlers_user: whistlers
+whistlers_group: whistlers
+
+# Where the repo is cloned and the config/credentials live
+whistlers_install_dir: /opt/whistlers
+whistlers_config_dir: /etc/whistlers
+
+# Git source
+whistlers_repo_url: "https://github.com/Herklos/Whistlers.git"
+whistlers_version: main
+
+# Node.js major version to install via NodeSource
+node_version: "20"
+
+# Queue backend: "nats" or "mqtt"
+whistlers_queue_type: nats
+
+# Queue broker URL
+whistlers_queue_url: "nats://localhost:4222"
+
+# Path to the Firebase service-account JSON on the target host.
+# This file must be placed on the host before running the role,
+# or provisioned separately (e.g. via Vault / a secrets manager).
+whistlers_firebase_credentials_path: "{{ whistlers_config_dir }}/service-account.json"
+
+# Subscriptions injected into the generated config.json.
+# Each entry must match the SubscriptionConfig schema:
+#   name, topics (list), optional group/destinationTopic/notification/dataFields
+# Example:
+#   whistlers_subscriptions:
+#     - name: orders
+#       topics: ["orders.*"]
+#       group: whistlers
+#       destinationTopic: orders
+#       notification:
+#         title: "New order"
+#         body: "An order was placed"
+#       dataFields: ["id", "status"]
+whistlers_subscriptions: []
+
+# systemd service restart policy
+whistlers_service_restart: always
+whistlers_service_restart_sec: 5

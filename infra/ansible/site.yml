@@ -1,0 +1,32 @@
+---
+# Example playbook — copy and customise for your inventory.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini infra/ansible/site.yml
+#
+# The service-account.json for Firebase must already exist on the target at
+# the path specified by `whistlers_firebase_credentials_path`, or you can
+# deploy it as a separate step / via Ansible Vault before running this playbook.
+
+- name: Deploy Whistlers bridge
+  hosts: whistlers_servers
+  become: true
+
+  vars:
+    whistlers_queue_type: nats
+    whistlers_queue_url: "nats://localhost:4222"
+    whistlers_subscriptions:
+      - name: orders
+        topics:
+          - "orders.*"
+        group: whistlers
+        destinationTopic: orders
+        notification:
+          title: "Order update"
+          body: "One of your orders has been updated"
+        dataFields:
+          - id
+          - status
+
+  roles:
+    - whistlers

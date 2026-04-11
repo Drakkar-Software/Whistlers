@@ -1,4 +1,4 @@
-import type { MessageHandler, QueueAdapter, QueueMessage } from "./base.js"
+import type { MessageHandler, QueueAdapter, QueueMessage, TopicSubscription } from "./base.js"
 
 export interface MqttQueueAdapterOptions {
   /** MQTT broker URL, e.g. `"mqtt://localhost:1883"` or `"mqtts://broker.example.com"`. */
@@ -45,26 +45,28 @@ export class MqttQueueAdapter implements QueueAdapter {
     this.client = client
   }
 
-  async subscribe(topics: string[]): Promise<void> {
+  async subscribe(subscriptions: TopicSubscription[]): Promise<void> {
     if (!this.client) throw new Error("Not connected. Call connect() first.")
-    for (const topic of topics) {
-      if (!this.subscribed.has(topic)) {
+    for (const { topic, group } of subscriptions) {
+      const subscriptionTopic = MqttQueueAdapter.buildSubscriptionTopic(topic, group)
+      if (!this.subscribed.has(subscriptionTopic)) {
         await new Promise<void>((resolve, reject) => {
-          this.client!.subscribe(topic, (err) => (err ? reject(err) : resolve()))
+          this.client!.subscribe(subscriptionTopic, (err) => (err ? reject(err) : resolve()))
         })
-        this.subscribed.add(topic)
+        this.subscribed.add(subscriptionTopic)
       }
     }
   }
 
-  async unsubscribe(topics: string[]): Promise<void> {
+  async unsubscribe(subscriptions: TopicSubscription[]): Promise<void> {
     if (!this.client) return
-    for (const topic of topics) {
-      if (this.subscribed.has(topic)) {
+    for (const { topic, group } of subscriptions) {
+      const subscriptionTopic = MqttQueueAdapter.buildSubscriptionTopic(topic, group)
+      if (this.subscribed.has(subscriptionTopic)) {
         await new Promise<void>((resolve, reject) => {
-          this.client!.unsubscribe(topic, (err) => (err ? reject(err) : resolve()))
+          this.client!.unsubscribe(subscriptionTopic, (err) => (err ? reject(err) : resolve()))
         })
-        this.subscribed.delete(topic)
+        this.subscribed.delete(subscriptionTopic)
       }
     }
   }

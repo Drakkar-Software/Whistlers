@@ -1,0 +1,139 @@
+---
+# ---------------------------------------------------------------------------
+# 1. System user & directories
+# ---------------------------------------------------------------------------
+- name: Create whistlers group
+  ansible.builtin.group:
+    name: "{{ whistlers_group }}"
+    system: true
+    state: present
+
+- name: Create whistlers user
+  ansible.builtin.user:
+    name: "{{ whistlers_user }}"
+    group: "{{ whistlers_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ whistlers_install_dir }}"
+    create_home: false
+    state: present
+
+- name: Create install directory
+  ansible.builtin.file:
+    path: "{{ whistlers_install_dir }}"
+    state: directory
+    owner: "{{ whistlers_user }}"
+    group: "{{ whistlers_group }}"
+    mode: "0755"
+
+- name: Create config directory
+  ansible.builtin.file:
+    path: "{{ whistlers_config_dir }}"
+    state: directory
+    owner: "{{ whistlers_user }}"
+    group: "{{ whistlers_group }}"
+    mode: "0750"
+
+# ---------------------------------------------------------------------------
+# 2. Node.js (via NodeSource)
+# ---------------------------------------------------------------------------
+- name: Install dependencies for NodeSource setup
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+- name: Add NodeSource APT repository
+  ansible.builtin.shell: |
+    curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+  when: ansible_os_family == "Debian"
+
+- name: Install Node.js
+  ansible.builtin.package:
+    name: nodejs
+    state: present
+
+- name: Install pnpm via corepack
+  ansible.builtin.command: corepack enable pnpm
+  args:
+    creates: /usr/local/bin/pnpm
+
+# ---------------------------------------------------------------------------
+# 3. Clone / update repository
+# ---------------------------------------------------------------------------
+- name: Clone or update Whistlers repository
+  ansible.builtin.git:
+    repo: "{{ whistlers_repo_url }}"
+    dest: "{{ whistlers_install_dir }}"
+    version: "{{ whistlers_version }}"
+    force: false
+  become: true
+  become_user: "{{ whistlers_user }}"
+  notify: restart whistlers
+
+# ---------------------------------------------------------------------------
+# 4. Install dependencies & build
+# ---------------------------------------------------------------------------
+- name: Install Node dependencies
+  ansible.builtin.command: pnpm install --frozen-lockfile
+  args:
+    chdir: "{{ whistlers_install_dir }}"
+  become: true
+  become_user: "{{ whistlers_user }}"
+  notify: restart whistlers
+
+- name: Build TypeScript
+  ansible.builtin.command: pnpm -r build
+  args:
+    chdir: "{{ whistlers_install_dir }}"
+  become: true
+  become_user: "{{ whistlers_user }}"
+  notify: restart whistlers
+
+# ---------------------------------------------------------------------------
+# 5. Configuration
+# ---------------------------------------------------------------------------
+- name: Deploy Whistlers config.json
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ whistlers_config_dir }}/config.json"
+    owner: "{{ whistlers_user }}"
+    group: "{{ whistlers_group }}"
+    mode: "0640"
+  notify: restart whistlers
+
+- name: Deploy environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ whistlers_config_dir }}/.env"
+    owner: "{{ whistlers_user }}"
+    group: "{{ whistlers_group }}"
+    mode: "0640"
+  notify: restart whistlers
+
+# ---------------------------------------------------------------------------
+# 6. systemd service
+# ---------------------------------------------------------------------------
+- name: Deploy systemd service unit
+  ansible.builtin.template:
+    src: whistlers.service.j2
+    dest: /etc/systemd/system/whistlers.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart whistlers
+
+- name: Enable and start Whistlers service
+  ansible.builtin.systemd:
+    name: whistlers
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest"
 import { Whistler, sanitizeTopic } from "../src/bridge.js"
-import { MemoryQueueAdapter } from "../src/queue/memory.js"
+import { MemoryQueueAdapter, CustomQueueAdapter } from "../src/queue/memory.js"
 import { MemoryDestination } from "../src/destination/memory.js"
 import { createConfig } from "../src/config/loader.js"
-import type { QueueMessage } from "../src/queue/base.js"
+import type { QueueMessage, TopicSubscription } from "../src/queue/base.js"
 
 function makeMessage(topic: string, payload: unknown = {}): QueueMessage {
   return { topic, payload: JSON.stringify(payload), timestamp: 1000 }
@@ -179,6 +179,25 @@ describe("Whistler message routing", () => {
     expect(queue.subscribed).toHaveLength(2)
     expect(queue.subscribed).toContain("orders.*")
     expect(queue.subscribed).toContain("events.*")
+    await whistler.stop()
+  })
+
+  it("passes group to the queue adapter when subscribing", async () => {
+    const received: TopicSubscription[] = []
+    const queue = new CustomQueueAdapter({
+      onSubscribe: async (subs) => { received.push(...subs) },
+    })
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [
+        { name: "orders", topics: ["orders.*"], group: "workers" },
+        { name: "events", topics: ["events.*"] },
+      ],
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    expect(received).toContainEqual({ topic: "orders.*", group: "workers" })
+    expect(received).toContainEqual({ topic: "events.*" })
     await whistler.stop()
   })
 })

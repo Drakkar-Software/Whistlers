@@ -1,4 +1,4 @@
-import type { QueueAdapter, QueueMessage } from "./queue/base.js"
+import type { QueueAdapter, QueueMessage, TopicSubscription } from "./queue/base.js"
 import type { DestinationAdapter, OutgoingNotification } from "./destination/base.js"
 import type { SubscriptionConfig, WhistlersConfig } from "./config/schema.js"
 
@@ -76,10 +76,7 @@ export class Whistler {
     this.started = true
 
     await this.queue.connect()
-
-    // Collect every unique topic across all subscriptions
-    const allTopics = [...new Set(this.config.subscriptions.flatMap((s) => s.topics))]
-    await this.queue.subscribe(allTopics)
+    await this.queue.subscribe(this.collectSubscriptions())
 
     this.queue.onMessage(async (message) => {
       for (const sub of this.config.subscriptions) {
@@ -113,11 +110,30 @@ export class Whistler {
 
   async stop(): Promise<void> {
     if (!this.started) return
-    const allTopics = [...new Set(this.config.subscriptions.flatMap((s) => s.topics))]
-    await this.queue.unsubscribe(allTopics)
+    await this.queue.unsubscribe(this.collectSubscriptions())
     await this.queue.close()
     await this.destination.close?.()
     this.started = false
+  }
+
+  /**
+   * Collect the unique set of (topic, group) pairs across all subscriptions.
+   * Deduplicates by the effective subscription key so the same topic+group is
+   * only subscribed once even if it appears in multiple `SubscriptionConfig` entries.
+   */
+  private collectSubscriptions(): TopicSubscription[] {
+    const seen = new Set<string>()
+    const result: TopicSubscription[] = []
+    for (const sub of this.config.subscriptions) {
+      for (const topic of sub.topics) {
+        const key = sub.group ? `${sub.group}:${topic}` : topic
+        if (!seen.has(key)) {
+          seen.add(key)
+          result.push(sub.group ? { topic, group: sub.group } : { topic })
+        }
+      }
+    }
+    return result
   }
 }
 

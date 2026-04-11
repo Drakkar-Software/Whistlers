@@ -1,4 +1,4 @@
-import type { MessageHandler, QueueAdapter, QueueMessage } from "./base.js"
+import type { MessageHandler, QueueAdapter, QueueMessage, TopicSubscription } from "./base.js"
 
 /**
  * In-memory queue adapter for use in tests and local development.
@@ -13,17 +13,17 @@ export class MemoryQueueAdapter implements QueueAdapter {
     this.connected = true
   }
 
-  async subscribe(topics: string[]): Promise<void> {
-    for (const t of topics) {
-      if (!this.subscribed.includes(t)) {
-        this.subscribed.push(t)
+  async subscribe(subscriptions: TopicSubscription[]): Promise<void> {
+    for (const { topic } of subscriptions) {
+      if (!this.subscribed.includes(topic)) {
+        this.subscribed.push(topic)
       }
     }
   }
 
-  async unsubscribe(topics: string[]): Promise<void> {
-    for (const t of topics) {
-      const idx = this.subscribed.indexOf(t)
+  async unsubscribe(subscriptions: TopicSubscription[]): Promise<void> {
+    for (const { topic } of subscriptions) {
+      const idx = this.subscribed.indexOf(topic)
       if (idx !== -1) this.subscribed.splice(idx, 1)
     }
   }
@@ -66,8 +66,8 @@ export class CustomQueueAdapter implements QueueAdapter {
 
   constructor(
     private readonly opts: {
-      onSubscribe?: (topics: string[]) => Promise<void>
-      onUnsubscribe?: (topics: string[]) => Promise<void>
+      onSubscribe?: (subscriptions: TopicSubscription[]) => Promise<void>
+      onUnsubscribe?: (subscriptions: TopicSubscription[]) => Promise<void>
       onConnect?: () => Promise<void>
       onClose?: () => Promise<void>
     } = {}
@@ -77,19 +77,19 @@ export class CustomQueueAdapter implements QueueAdapter {
     await this.opts.onConnect?.()
   }
 
-  async subscribe(topics: string[]): Promise<void> {
-    for (const t of topics) {
-      if (!this.subscribed.includes(t)) this.subscribed.push(t)
+  async subscribe(subscriptions: TopicSubscription[]): Promise<void> {
+    for (const { topic } of subscriptions) {
+      if (!this.subscribed.includes(topic)) this.subscribed.push(topic)
     }
-    await this.opts.onSubscribe?.(topics)
+    await this.opts.onSubscribe?.(subscriptions)
   }
 
-  async unsubscribe(topics: string[]): Promise<void> {
-    for (const t of topics) {
-      const idx = this.subscribed.indexOf(t)
+  async unsubscribe(subscriptions: TopicSubscription[]): Promise<void> {
+    for (const { topic } of subscriptions) {
+      const idx = this.subscribed.indexOf(topic)
       if (idx !== -1) this.subscribed.splice(idx, 1)
     }
-    await this.opts.onUnsubscribe?.(topics)
+    await this.opts.onUnsubscribe?.(subscriptions)
   }
 
   onMessage(handler: MessageHandler): void {

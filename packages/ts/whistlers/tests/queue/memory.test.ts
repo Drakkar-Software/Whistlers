@@ -52,16 +52,16 @@ describe("MemoryQueueAdapter", () => {
 
   it("subscribe adds topics, unsubscribe removes them", async () => {
     const adapter = new MemoryQueueAdapter()
-    await adapter.subscribe(["a", "b", "c"])
+    await adapter.subscribe([{ topic: "a" }, { topic: "b" }, { topic: "c" }])
     expect(adapter.subscribed).toEqual(["a", "b", "c"])
-    await adapter.unsubscribe(["b"])
+    await adapter.unsubscribe([{ topic: "b" }])
     expect(adapter.subscribed).toEqual(["a", "c"])
   })
 
   it("subscribe is idempotent", async () => {
     const adapter = new MemoryQueueAdapter()
-    await adapter.subscribe(["a"])
-    await adapter.subscribe(["a"])
+    await adapter.subscribe([{ topic: "a" }])
+    await adapter.subscribe([{ topic: "a" }])
     expect(adapter.subscribed).toHaveLength(1)
   })
 
@@ -105,19 +105,19 @@ describe("MemoryQueueAdapter", () => {
 })
 
 describe("CustomQueueAdapter", () => {
-  it("calls onSubscribe callback", async () => {
+  it("calls onSubscribe callback with TopicSubscription objects", async () => {
     const onSubscribe = vi.fn().mockResolvedValue(undefined)
     const adapter = new CustomQueueAdapter({ onSubscribe })
-    await adapter.subscribe(["t1", "t2"])
-    expect(onSubscribe).toHaveBeenCalledWith(["t1", "t2"])
+    await adapter.subscribe([{ topic: "t1" }, { topic: "t2", group: "workers" }])
+    expect(onSubscribe).toHaveBeenCalledWith([{ topic: "t1" }, { topic: "t2", group: "workers" }])
   })
 
-  it("calls onUnsubscribe callback", async () => {
+  it("calls onUnsubscribe callback with TopicSubscription objects", async () => {
     const onUnsubscribe = vi.fn().mockResolvedValue(undefined)
     const adapter = new CustomQueueAdapter({ onUnsubscribe })
-    await adapter.subscribe(["t1"])
-    await adapter.unsubscribe(["t1"])
-    expect(onUnsubscribe).toHaveBeenCalledWith(["t1"])
+    await adapter.subscribe([{ topic: "t1" }])
+    await adapter.unsubscribe([{ topic: "t1" }])
+    expect(onUnsubscribe).toHaveBeenCalledWith([{ topic: "t1" }])
   })
 
   it("deliver dispatches message to handlers", async () => {
@@ -132,7 +132,7 @@ describe("CustomQueueAdapter", () => {
   it("works without any callbacks", async () => {
     const adapter = new CustomQueueAdapter()
     await expect(adapter.connect()).resolves.toBeUndefined()
-    await expect(adapter.subscribe(["t"])).resolves.toBeUndefined()
+    await expect(adapter.subscribe([{ topic: "t" }])).resolves.toBeUndefined()
     await expect(adapter.close()).resolves.toBeUndefined()
   })
 })

@@ -83,25 +83,40 @@ describe("MqttQueueAdapter lifecycle", () => {
   it("subscribe calls client.subscribe for each topic", async () => {
     const adapter = new MqttQueueAdapter({ url: "mqtt://localhost:1883" })
     await adapter.connect()
-    await adapter.subscribe(["orders/created", "orders/updated"])
+    await adapter.subscribe([{ topic: "orders/created" }, { topic: "orders/updated" }])
     expect(mockClient.subscribe).toHaveBeenCalledWith("orders/created", expect.any(Function))
     expect(mockClient.subscribe).toHaveBeenCalledWith("orders/updated", expect.any(Function))
+  })
+
+  it("subscribe with group applies $share prefix", async () => {
+    const adapter = new MqttQueueAdapter({ url: "mqtt://localhost:1883" })
+    await adapter.connect()
+    await adapter.subscribe([{ topic: "orders/+", group: "workers" }])
+    expect(mockClient.subscribe).toHaveBeenCalledWith("$share/workers/orders/+", expect.any(Function))
   })
 
   it("subscribe is idempotent", async () => {
     const adapter = new MqttQueueAdapter({ url: "mqtt://localhost:1883" })
     await adapter.connect()
-    await adapter.subscribe(["a/b"])
-    await adapter.subscribe(["a/b"])
+    await adapter.subscribe([{ topic: "a/b" }])
+    await adapter.subscribe([{ topic: "a/b" }])
     expect(mockClient.subscribe).toHaveBeenCalledTimes(1)
   })
 
-  it("unsubscribe calls client.unsubscribe", async () => {
+  it("unsubscribe calls client.unsubscribe with the effective topic", async () => {
     const adapter = new MqttQueueAdapter({ url: "mqtt://localhost:1883" })
     await adapter.connect()
-    await adapter.subscribe(["a/b"])
-    await adapter.unsubscribe(["a/b"])
+    await adapter.subscribe([{ topic: "a/b" }])
+    await adapter.unsubscribe([{ topic: "a/b" }])
     expect(mockClient.unsubscribe).toHaveBeenCalledWith("a/b", expect.any(Function))
+  })
+
+  it("unsubscribe with group uses the $share-prefixed topic", async () => {
+    const adapter = new MqttQueueAdapter({ url: "mqtt://localhost:1883" })
+    await adapter.connect()
+    await adapter.subscribe([{ topic: "orders/+", group: "workers" }])
+    await adapter.unsubscribe([{ topic: "orders/+", group: "workers" }])
+    expect(mockClient.unsubscribe).toHaveBeenCalledWith("$share/workers/orders/+", expect.any(Function))
   })
 
   it("close calls client.end", async () => {
@@ -113,7 +128,7 @@ describe("MqttQueueAdapter lifecycle", () => {
 
   it("throws if subscribe is called before connect", async () => {
     const adapter = new MqttQueueAdapter({ url: "mqtt://localhost:1883" })
-    await expect(adapter.subscribe(["a"])).rejects.toThrow("Not connected")
+    await expect(adapter.subscribe([{ topic: "a" }])).rejects.toThrow("Not connected")
   })
 
   it("dispatches incoming messages to handlers", async () => {

@@ -1,5 +1,5 @@
 // Queue
-export type { QueueAdapter, QueueMessage, MessageHandler } from "./queue/base.js"
+export type { QueueAdapter, QueueMessage, MessageHandler, TopicSubscription } from "./queue/base.js"
 export { MemoryQueueAdapter, CustomQueueAdapter, matchNatsTopic } from "./queue/memory.js"
 export { NatsQueueAdapter } from "./queue/nats.js"
 export type { NatsQueueAdapterOptions } from "./queue/nats.js"
