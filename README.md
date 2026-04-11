@@ -1,8 +1,20 @@
-# Whistlers
+<p align="center">
+  <img src="logo.png" alt="Whistlers" width="180" />
+</p>
 
-**Message-queue → push notification bridge.**
+<h1 align="center">Whistlers</h1>
 
-Whistlers subscribes to topics on NATS or MQTT and forwards incoming messages as Firebase Cloud Messaging (FCM) push notifications. Mobile users subscribe to FCM topics; Whistlers makes sure they hear about queue events in real time.
+<p align="center">
+  <strong>Message-queue → push notification bridge</strong><br/>
+  Subscribe to NATS or MQTT topics and forward messages as Firebase Cloud Messaging push notifications to your mobile users — in real time.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@drakkar.software/whistlers"><img src="https://img.shields.io/npm/v/@drakkar.software/whistlers" alt="npm version" /></a>
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="license" />
+</p>
+
+---
 
 ## Packages
 
