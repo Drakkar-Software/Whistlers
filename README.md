@@ -256,11 +256,53 @@ The config argument is a path to a standard Whistlers JSON config file.
 
 An Ansible role is included under `infra/ansible/roles/whistlers`. It installs Node.js and pnpm, clones this repository, builds it, and runs the standalone server as a systemd service.
 
+### Using the role from another repository
+
+Add a `requirements.yml` to your playbook repo pointing at this repository:
+
+```yaml
+# requirements.yml
+roles:
+  - name: whistlers
+    src: https://github.com/Herklos/Whistlers.git
+    scm: git
+    version: main          # pin to a tag or commit SHA in production
+    src_path: infra/ansible/roles/whistlers
+```
+
+Install the role before running your playbook:
+
+```bash
+ansible-galaxy role install -r requirements.yml
+```
+
+Then reference it by name in your playbook:
+
+```yaml
+- name: Deploy Whistlers
+  hosts: whistlers_servers
+  become: true
+  vars:
+    whistlers_queue_type: nats
+    whistlers_queue_url: "nats://localhost:4222"
+    whistlers_subscriptions:
+      - name: orders
+        topics: ["orders.*"]
+        notification: { title: "New order", body: "An order was placed" }
+        dataFields: ["id", "status"]
+  roles:
+    - whistlers
+```
+
+### Running the bundled example playbook
+
+The repository ships `infra/ansible/site.yml` as a ready-to-use example:
+
 ```bash
 ansible-playbook -i inventory.ini infra/ansible/site.yml
 ```
 
-Key variables (set in your playbook or `host_vars`):
+### Role variables
 
 | Variable | Default | Description |
 |---|---|---|
@@ -272,5 +314,3 @@ Key variables (set in your playbook or `host_vars`):
 | `whistlers_install_dir` | `/opt/whistlers` | Where the repo is cloned |
 
 The service-account JSON must be placed on the target host before running the playbook (or provisioned separately via Vault / a secrets manager).
-
-See `infra/ansible/site.yml` for a full example playbook.
