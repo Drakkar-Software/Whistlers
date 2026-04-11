@@ -21,11 +21,11 @@ export interface WhistlerOptions {
 }
 
 /**
- * Convert a queue topic into a valid FCM topic name.
+ * Convert a queue topic into a safe destination topic name.
  * Queue separators (`.` for NATS, `/` for MQTT) and any other characters
  * outside `[a-zA-Z0-9-_~%]` are replaced with `-`.
- * Dots are intentionally normalized even though FCM allows them, because they
- * carry structural meaning in NATS and produce cleaner FCM topic names.
+ * Dots are intentionally normalized because they carry structural meaning
+ * in NATS and produce ambiguous topic names.
  */
 export function sanitizeTopic(topic: string): string {
   return topic.replace(/[^a-zA-Z0-9\-_~%]/g, "-")
@@ -99,7 +99,7 @@ export class Whistler {
 
         try {
           await this.destination.send(notification)
-          this.logger?.info(`Forwarded message on "${message.topic}" → FCM topic "${destTopic}"`)
+          this.logger?.info(`Forwarded message on "${message.topic}" → "${destTopic}"`)
         } catch (err) {
           this.logger?.error(`Failed to forward "${message.topic}" → "${destTopic}"`, err)
           this.onError?.(err, { message, subscription: sub })

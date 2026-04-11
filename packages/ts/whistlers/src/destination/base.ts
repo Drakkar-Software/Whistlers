@@ -4,7 +4,7 @@ export interface NotificationPayload {
 }
 
 export interface OutgoingNotification {
-  /** Sanitized FCM-safe topic name. */
+  /** Sanitized destination topic name. */
   topic: string
   /** Original topic from the queue message. */
   sourceTopic: string

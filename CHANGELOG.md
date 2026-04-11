@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `ClickHouseDestination` — inserts each notification as a row into a ClickHouse table (`@clickhouse/client` peer dependency).
+- `PostgresDestination` — inserts each notification as a row into a PostgreSQL table (`pg` peer dependency). Queries use parameterized placeholders.
+- `S3Destination` — writes each notification as a JSON object to S3. Keys follow `{prefix}{topic}/{uuid}.json`. Accepts a pre-configured `S3Client` for custom endpoints. (`@aws-sdk/client-s3` peer dependency).
+- All three new destinations are optional peer dependencies; install only what you use.
+
+### Changed
+- README and code comments no longer refer to Firebase / FCM specifically — Whistlers is now presented as a generic queue-to-destination bridge.
+- `OutgoingNotification.topic` doc comment updated from "FCM-safe" to "destination topic name".
+- `SubscriptionConfig.destinationTopic` / `notification` / `dataFields` comments made destination-agnostic.
+- Log message in `Whistler` updated: "→ FCM topic" → "→".
+
 ### Fixed
 - **Consumer groups now work end-to-end.** The `group` field in `SubscriptionConfig` was documented and validated but never reached the queue adapters. The bridge now collects `(topic, group)` pairs and passes them through:
   - `NatsQueueAdapter`: calls `nc.subscribe(topic, { queue: group })` when a group is set.

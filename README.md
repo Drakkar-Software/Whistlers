@@ -5,8 +5,8 @@
 <h1 align="center">Whistlers</h1>
 
 <p align="center">
-  <strong>Message-queue → push notification bridge</strong><br/>
-  Subscribe to NATS or MQTT topics and forward messages as Firebase Cloud Messaging push notifications to your mobile users — in real time.
+  <strong>Message-queue → destination bridge</strong><br/>
+  Subscribe to queue topics and forward messages to Firebase, ClickHouse, PostgreSQL, or S3 — in real time.
 </p>
 
 <p align="center">
@@ -119,11 +119,16 @@ Both builders run the same validation and throw descriptive errors if the config
 | `name` | `string` | ✓ | Unique identifier for this subscription |
 | `topics` | `string[]` | ✓ | Queue-native topic patterns (see [Topic Matching](#topic-matching)) |
 | `group` | `string` | | Consumer group name (NATS queue group / MQTT shared subscription) |
-| `destinationTopic` | `string` | | FCM topic to publish to. Defaults to the sanitized source topic |
-| `notification` | `{ title?, body? }` | | Static notification content sent to FCM |
-| `dataFields` | `string[]` | | Top-level payload fields to forward as FCM data key/value pairs |
+| `destinationTopic` | `string` | | Destination topic name. Defaults to the sanitized source topic (`.` and `/` → `-`). Call `sanitizeTopic(topic)` for custom transformations. |
+| `notification` | `{ title?, body? }` | | Static notification content passed through to the destination |
+| `dataFields` | `string[]` | | Top-level payload fields to forward as string key/value pairs |
 
 ## Queue Adapters
+
+| Adapter | Description |
+|---|---|
+| `NatsQueueAdapter` | NATS Core with queue group support |
+| `MqttQueueAdapter` | MQTT v3/v5 with shared subscription support |
 
 ### NATS
 
@@ -135,7 +140,7 @@ new NatsQueueAdapter({ servers: ["nats://n1:4222", "nats://n2:4222"] })
 
 Wildcard syntax: `orders.*` (single token), `events.>` (all remaining tokens).
 
-When `group` is set on a subscription, Whistlers subscribes with a NATS **queue group** (`nc.subscribe(subject, { queue: group })`). Only one instance in the group processes each message — useful for running multiple Whistlers instances without duplicate notifications.
+When `group` is set, Whistlers subscribes with a **queue group** so only one instance in the group processes each message — useful for running multiple Whistlers instances without duplicate deliveries.
 
 ### MQTT
 
@@ -150,11 +155,20 @@ new MqttQueueAdapter({
 
 Wildcard syntax: `orders/+` (single level), `events/#` (all levels).
 
-When `group` is set, Whistlers uses an MQTT **shared subscription** (`$share/{group}/topic`). The broker delivers each message to exactly one subscriber in the group.
+When `group` is set, Whistlers uses a **shared subscription** (`$share/{group}/topic`) so the broker delivers each message to exactly one subscriber in the group.
 
 ## Destination Adapters
 
-### Firebase (FCM)
+| Adapter | Peer dependency | What it does |
+|---|---|---|
+| `FirebaseDestination` | `firebase-admin` | Sends FCM push notifications |
+| `ClickHouseDestination` | `@clickhouse/client` | Inserts rows into a ClickHouse table |
+| `PostgresDestination` | `pg` | Inserts rows into a PostgreSQL table |
+| `S3Destination` | `@aws-sdk/client-s3` | Writes notification JSON objects to S3 |
+
+Each adapter is an optional peer dependency — install only what you use.
+
+### Firebase
 
 ```typescript
 // uses the default Firebase app (must call admin.initializeApp() first)
@@ -164,13 +178,89 @@ new FirebaseDestination()
 new FirebaseDestination({ app: myFirebaseApp })
 ```
 
-`firebase-admin` is a peer dependency — install it separately:
-
 ```
 pnpm add firebase-admin
 ```
 
-FCM topic names must match `[a-zA-Z0-9-_.~%]+`. When `destinationTopic` is not set, Whistlers sanitizes the source topic automatically (`.` and `/` → `-`). You can also call `sanitizeTopic(topic)` directly for custom transformations.
+### ClickHouse
+
+Insert each notification as a row. Expected table schema:
+
+```sql
+CREATE TABLE notifications (
+    topic         String,
+    source_topic  String,
+    notification  Nullable(String),
+    data          Nullable(String),
+    raw_payload   String,
+    received_at   DateTime DEFAULT now()
+) ENGINE = MergeTree()
+ORDER BY received_at;
+```
+
+```typescript
+new ClickHouseDestination({
+  url: "http://localhost:8123",
+  database: "default",
+  table: "notifications",
+  username: "default",  // optional
+  password: "",         // optional
+})
+```
+
+```
+pnpm add @clickhouse/client
+```
+
+### PostgreSQL
+
+Insert each notification as a row. Expected table schema:
+
+```sql
+CREATE TABLE notifications (
+    id           BIGSERIAL PRIMARY KEY,
+    topic        TEXT NOT NULL,
+    source_topic TEXT NOT NULL,
+    notification JSONB,
+    data         JSONB,
+    raw_payload  JSONB NOT NULL,
+    received_at  TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+```typescript
+new PostgresDestination({
+  connectionString: "postgresql://user:pass@host:5432/db",
+  table: "notifications",
+})
+```
+
+```
+pnpm add pg
+```
+
+### S3
+
+Write each notification as a JSON object. Keys follow the pattern `{prefix}{topic}/{uuid}.json` (default prefix: `whistlers/`).
+
+```typescript
+// uses the AWS credential chain (env vars, IAM role, instance profile, etc.)
+new S3Destination({ bucket: "my-bucket" })
+
+// custom region and key prefix
+new S3Destination({ bucket: "my-bucket", region: "eu-west-1", prefix: "events/" })
+
+// pre-configured client — useful for LocalStack, MinIO, or custom endpoints
+import { S3Client } from "@aws-sdk/client-s3"
+new S3Destination({
+  bucket: "my-bucket",
+  client: new S3Client({ endpoint: "http://localhost:4566", region: "us-east-1" }),
+})
+```
+
+```
+pnpm add @aws-sdk/client-s3
+```
 
 ## Topic Matching
 
@@ -181,11 +271,11 @@ Each adapter implements queue-native wildcard semantics:
 | NATS | `*` | `>` (must be last token) |
 | MQTT | `+` | `#` (must be last level) |
 
-A message arriving on `orders.created` matches the pattern `orders.*` (NATS). A message on `sensors/temp/zone1` matches `sensors/#` (MQTT). Multiple subscriptions can match the same message — each fires independently and forwards to its own FCM topic.
+A message arriving on `orders.created` matches the pattern `orders.*` (NATS). A message on `sensors/temp/zone1` matches `sensors/#` (MQTT). Multiple subscriptions can match the same message — each fires independently.
 
 ## Error Handling
 
-Destination errors (e.g. FCM quota exceeded, network failure) are caught per-message. The bridge keeps running.
+Destination errors (e.g. connection failure, quota exceeded) are caught per-message. The bridge keeps running.
 
 ```typescript
 const whistler = new Whistler({

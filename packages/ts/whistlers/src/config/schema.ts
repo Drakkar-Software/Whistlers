@@ -19,14 +19,14 @@ export interface SubscriptionConfig {
    */
   group?: string
   /**
-   * FCM topic to publish to. Defaults to a sanitized version of the source topic.
-   * Must match `[a-zA-Z0-9-_.~%]+`.
+   * Destination topic name. Defaults to a sanitized version of the source topic
+   * (queue separators replaced with `-`).
    */
   destinationTopic?: string
-  /** Static notification content sent to FCM. */
+  /** Static notification content passed through to the destination adapter. */
   notification?: NotificationTemplate
   /**
-   * Payload fields to forward as FCM data key/value pairs.
+   * Payload fields to forward as string key/value pairs.
    * Only top-level string/number/boolean fields are supported.
    */
   dataFields?: string[]
