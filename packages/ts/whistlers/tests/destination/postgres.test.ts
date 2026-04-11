@@ -127,4 +127,62 @@ describe("PostgresDestination", () => {
     await expect(dest.close()).resolves.toBeUndefined()
     expect(mockEnd).not.toHaveBeenCalled()
   })
+
+  it("calls format callback with the full OutgoingNotification and builds a dynamic INSERT", async () => {
+    const format = vi.fn().mockReturnValue({ col_a: "x", col_b: 42 })
+    const dest = new PostgresDestination({
+      connectionString: "postgresql://localhost/test",
+      table: "events",
+      format,
+    })
+    await dest.send(makeNotification())
+    expect(format).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "orders",
+        sourceTopic: "orders.created",
+        rawPayload: { id: "1" },
+      })
+    )
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO events ("col_a", "col_b")'),
+      ["x", 42]
+    )
+  })
+
+  it("format callback column names are double-quoted in the INSERT statement", async () => {
+    const format = vi.fn().mockReturnValue({ my_col: "v" })
+    const dest = new PostgresDestination({
+      connectionString: "postgresql://localhost/test",
+      table: "events",
+      format,
+    })
+    await dest.send(makeNotification())
+    const [sql] = mockQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('"my_col"')
+  })
+
+  it("format callback returning an empty object throws a descriptive error", async () => {
+    const format = vi.fn().mockReturnValue({})
+    const dest = new PostgresDestination({
+      connectionString: "postgresql://localhost/test",
+      table: "events",
+      format,
+    })
+    await expect(dest.send(makeNotification())).rejects.toThrow(
+      "PostgresDestination: format callback returned an empty row"
+    )
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  it("propagates errors thrown by format callback", async () => {
+    const format = vi.fn().mockImplementation(() => {
+      throw new Error("formatter crashed")
+    })
+    const dest = new PostgresDestination({
+      connectionString: "postgresql://localhost/test",
+      table: "events",
+      format,
+    })
+    await expect(dest.send(makeNotification())).rejects.toThrow("formatter crashed")
+  })
 })

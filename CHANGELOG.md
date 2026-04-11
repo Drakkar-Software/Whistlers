@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- `format` callback option on all destination adapters — override the default content sent to each destination:
+  - `FirebaseDestination`: returns FCM message fields (`notification`, `data`, `android`, `apns`, etc.) merged with the mandatory `topic` (which cannot be overridden).
+  - `ClickHouseDestination`: returns a `Record<string, unknown>` inserted as a JSONEachRow row.
+  - `PostgresDestination`: returns a `Record<string, unknown>`; keys become double-quoted column names in a dynamic `INSERT`.
+  - `S3Destination`: returns a `string` (`ContentType: text/plain`, no `.json` key extension) or a `Record<string, unknown>` (JSON-serialised, `ContentType: application/json`, `.json` key extension).
+
+### Removed
+- **Breaking:** `parseConfigJson` removed. Use `createConfig` to build config from code.
+- `bin/server.ts` standalone server removed (it depended on JSON config).
+
 ## [0.2.0] — 2026-04-11
 
 ### Added
@@ -26,8 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `TopicSubscription` interface (`{ topic: string; group?: string }`) exported from the package. `QueueAdapter.subscribe` and `unsubscribe` now accept `TopicSubscription[]` instead of `string[]`.
-- `bin/server.ts` — standalone entry point for running Whistlers as a daemon. Reads a config JSON file and selects the queue adapter via `QUEUE_TYPE` / `QUEUE_URL` environment variables.
-- `infra/ansible/roles/whistlers` — Ansible role to deploy the Whistlers server on Debian/Ubuntu. Installs Node.js, pnpm, clones the repo, builds, and manages a systemd service.
+- `infra/ansible/roles/whistlers` — Ansible role to deploy Whistlers on Debian/Ubuntu. Installs Node.js, pnpm, clones the repo, builds, and manages a systemd service.
 - `CustomQueueAdapter` callbacks (`onSubscribe`, `onUnsubscribe`) now receive `TopicSubscription[]` instead of `string[]`, carrying group information to test code.
 
 ## [0.1.0] — 2026-04-11

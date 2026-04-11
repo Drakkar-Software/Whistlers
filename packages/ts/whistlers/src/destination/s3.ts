@@ -17,6 +17,16 @@ export interface S3DestinationOptions {
    * responsibility. Useful for custom endpoints (LocalStack, MinIO, etc.).
    */
   client?: S3Client
+  /**
+   * Format the object body stored in S3. Receives the outgoing notification and returns
+   * the content to write: a string is used as-is with `ContentType: "text/plain"` and no
+   * `.json` key extension; an object is JSON-serialised with `ContentType: "application/json"`
+   * and a `.json` key extension.
+   *
+   * When omitted, the default body is a JSON object containing `topic`, `sourceTopic`,
+   * `notification`, `data`, and `rawPayload`.
+   */
+  format?: (notification: OutgoingNotification) => string | Record<string, unknown>
 }
 
 export class S3Destination implements DestinationAdapter {
@@ -24,6 +34,9 @@ export class S3Destination implements DestinationAdapter {
   private readonly prefix: string
   private readonly region: string | undefined
   private readonly externalClient: S3Client | undefined
+  private readonly formatFn:
+    | ((notification: OutgoingNotification) => string | Record<string, unknown>)
+    | undefined
   private s3: S3Client | undefined
 
   constructor(opts: S3DestinationOptions) {
@@ -31,6 +44,7 @@ export class S3Destination implements DestinationAdapter {
     this.prefix = opts.prefix ?? "whistlers/"
     this.region = opts.region
     this.externalClient = opts.client
+    this.formatFn = opts.format
   }
 
   private async getClient(): Promise<S3Client> {
@@ -46,21 +60,25 @@ export class S3Destination implements DestinationAdapter {
     const client = await this.getClient()
     const { PutObjectCommand } = await import("@aws-sdk/client-s3")
 
-    const key = `${this.prefix}${notification.topic}/${crypto.randomUUID()}.json`
-    const body = JSON.stringify({
-      topic: notification.topic,
-      sourceTopic: notification.sourceTopic,
-      notification: notification.notification,
-      data: notification.data,
-      rawPayload: notification.rawPayload,
-    })
+    const rawBody = this.formatFn
+      ? this.formatFn(notification)
+      : {
+          topic: notification.topic,
+          sourceTopic: notification.sourceTopic,
+          notification: notification.notification,
+          data: notification.data,
+          rawPayload: notification.rawPayload,
+        }
+    const isString = typeof rawBody === "string"
+    const body = isString ? rawBody : JSON.stringify(rawBody)
+    const key = `${this.prefix}${notification.topic}/${crypto.randomUUID()}${isString ? "" : ".json"}`
 
     await client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
         Body: body,
-        ContentType: "application/json",
+        ContentType: isString ? "text/plain" : "application/json",
       })
     )
   }

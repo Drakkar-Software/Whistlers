@@ -85,4 +85,37 @@ describe("FirebaseDestination", () => {
     const dest = new FirebaseDestination()
     await expect(dest.send(makeNotification())).rejects.toThrow("FCM quota exceeded")
   })
+
+  it("calls format callback with the full OutgoingNotification and uses its return value", async () => {
+    const format = vi.fn().mockReturnValue({ data: { custom: "yes" } })
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ notification: { title: "Hi" }, data: { foo: "bar" } }))
+    expect(format).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "orders",
+        sourceTopic: "orders.created",
+        rawPayload: { id: "1" },
+      })
+    )
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: "orders", data: { custom: "yes" } })
+    )
+    const call = mockSend.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(call?.["notification"]).toBeUndefined()
+  })
+
+  it("format callback cannot override topic", async () => {
+    const format = vi.fn().mockReturnValue({ topic: "hacked", data: {} })
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ topic: "orders" }))
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ topic: "orders" }))
+  })
+
+  it("propagates errors thrown by format callback", async () => {
+    const format = vi.fn().mockImplementation(() => {
+      throw new Error("formatter crashed")
+    })
+    const dest = new FirebaseDestination({ format })
+    await expect(dest.send(makeNotification())).rejects.toThrow("formatter crashed")
+  })
 })

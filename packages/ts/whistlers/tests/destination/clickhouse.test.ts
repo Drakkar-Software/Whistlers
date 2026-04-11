@@ -145,4 +145,37 @@ describe("ClickHouseDestination", () => {
     await expect(dest.close()).resolves.toBeUndefined()
     expect(mockClose).not.toHaveBeenCalled()
   })
+
+  it("calls format callback with the full OutgoingNotification and uses its result as the row", async () => {
+    const format = vi.fn().mockReturnValue({ custom_col: "value", count: 42 })
+    const dest = new ClickHouseDestination({
+      url: "http://localhost:8123",
+      database: "default",
+      table: "events",
+      format,
+    })
+    await dest.send(makeNotification())
+    expect(format).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "orders",
+        sourceTopic: "orders.created",
+        rawPayload: { id: "1" },
+      })
+    )
+    const call = mockInsert.mock.calls[0]?.[0] as { values: Record<string, unknown>[] }
+    expect(call.values[0]).toEqual({ custom_col: "value", count: 42 })
+  })
+
+  it("propagates errors thrown by format callback", async () => {
+    const format = vi.fn().mockImplementation(() => {
+      throw new Error("formatter crashed")
+    })
+    const dest = new ClickHouseDestination({
+      url: "http://localhost:8123",
+      database: "default",
+      table: "events",
+      format,
+    })
+    await expect(dest.send(makeNotification())).rejects.toThrow("formatter crashed")
+  })
 })

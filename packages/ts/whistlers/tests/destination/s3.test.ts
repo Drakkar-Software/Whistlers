@@ -38,11 +38,11 @@ describe("S3Destination", () => {
     expect(mockSend).toHaveBeenCalledTimes(1)
   })
 
-  it("key starts with the default prefix and includes the topic", async () => {
+  it("key starts with the default prefix, includes the topic, and ends with .json", async () => {
     const dest = new S3Destination({ bucket: "my-bucket" })
     await dest.send(makeNotification({ topic: "orders" }))
     const call = MockPutObjectCommand.mock.calls[0]?.[0] as { Key: string }
-    expect(call.Key).toMatch(/^whistlers\/orders\//)
+    expect(call.Key).toMatch(/^whistlers\/orders\/.+\.json$/)
   })
 
   it("respects a custom prefix", async () => {
@@ -66,7 +66,7 @@ describe("S3Destination", () => {
     expect(body["rawPayload"]).toEqual({ x: 2 })
   })
 
-  it("sets ContentType to application/json", async () => {
+  it("sets ContentType to application/json by default", async () => {
     const dest = new S3Destination({ bucket: "my-bucket" })
     await dest.send(makeNotification())
     const call = MockPutObjectCommand.mock.calls[0]?.[0] as { ContentType: string }
@@ -122,5 +122,48 @@ describe("S3Destination", () => {
     const dest = new S3Destination({ bucket: "my-bucket" })
     await expect(dest.close()).resolves.toBeUndefined()
     expect(mockDestroy).not.toHaveBeenCalled()
+  })
+
+  it("format callback string result: body used as-is, ContentType is text/plain, no .json extension", async () => {
+    const format = vi.fn().mockReturnValue("custom content")
+    const dest = new S3Destination({ bucket: "my-bucket", format })
+    await dest.send(makeNotification())
+    expect(format).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "orders",
+        sourceTopic: "orders.created",
+        rawPayload: { id: "1" },
+      })
+    )
+    const call = MockPutObjectCommand.mock.calls[0]?.[0] as {
+      Body: string
+      ContentType: string
+      Key: string
+    }
+    expect(call.Body).toBe("custom content")
+    expect(call.ContentType).toBe("text/plain")
+    expect(call.Key).not.toMatch(/\.json$/)
+  })
+
+  it("format callback object result: body is JSON-serialised, ContentType is application/json, key ends with .json", async () => {
+    const format = vi.fn().mockReturnValue({ custom: "data" })
+    const dest = new S3Destination({ bucket: "my-bucket", format })
+    await dest.send(makeNotification())
+    const call = MockPutObjectCommand.mock.calls[0]?.[0] as {
+      Body: string
+      ContentType: string
+      Key: string
+    }
+    expect(call.Body).toBe(JSON.stringify({ custom: "data" }))
+    expect(call.ContentType).toBe("application/json")
+    expect(call.Key).toMatch(/\.json$/)
+  })
+
+  it("propagates errors thrown by format callback", async () => {
+    const format = vi.fn().mockImplementation(() => {
+      throw new Error("formatter crashed")
+    })
+    const dest = new S3Destination({ bucket: "my-bucket", format })
+    await expect(dest.send(makeNotification())).rejects.toThrow("formatter crashed")
   })
 })

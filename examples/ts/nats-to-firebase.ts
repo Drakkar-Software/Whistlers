@@ -10,7 +10,7 @@
  */
 
 import admin from "firebase-admin"
-import { Whistler, NatsQueueAdapter, FirebaseDestination, parseConfigJson } from "@drakkar.software/whistlers"
+import { Whistler, NatsQueueAdapter, FirebaseDestination, createConfig } from "@drakkar.software/whistlers"
 
 // Initialize Firebase (uses Application Default Credentials when env var is set,
 // or you can pass a service account explicitly)
@@ -18,37 +18,34 @@ admin.initializeApp({
   credential: admin.credential.applicationDefault(),
 })
 
-const config = parseConfigJson(
-  JSON.stringify({
-    version: 1,
-    subscriptions: [
-      {
-        name: "orders",
-        // Subscribe to all sub-topics under `orders`
-        topics: ["orders.*"],
-        // NATS queue group — only one instance of this group processes each message
-        group: "whistlers",
-        // FCM topic that mobile users subscribe to
-        destinationTopic: "orders",
-        notification: {
-          title: "Order update",
-          body: "One of your orders has been updated",
-        },
-        // Forward these payload fields as FCM data so the app can deep-link
-        dataFields: ["id", "status"],
+const config = createConfig({
+  subscriptions: [
+    {
+      name: "orders",
+      // Subscribe to all sub-topics under `orders`
+      topics: ["orders.*"],
+      // NATS queue group — only one instance of this group processes each message
+      group: "whistlers",
+      // FCM topic that mobile users subscribe to
+      destinationTopic: "orders",
+      notification: {
+        title: "Order update",
+        body: "One of your orders has been updated",
       },
-      {
-        name: "announcements",
-        topics: ["announcements.>"],
-        destinationTopic: "announcements",
-        notification: {
-          title: "Announcement",
-          body: "A new announcement is available",
-        },
+      // Forward these payload fields as FCM data so the app can deep-link
+      dataFields: ["id", "status"],
+    },
+    {
+      name: "announcements",
+      topics: ["announcements.>"],
+      destinationTopic: "announcements",
+      notification: {
+        title: "Announcement",
+        body: "A new announcement is available",
       },
-    ],
-  })
-)
+    },
+  ],
+})
 
 const whistler = new Whistler({
   queue: new NatsQueueAdapter({ servers: "nats://localhost:4222" }),

@@ -21,7 +21,7 @@ export type { S3DestinationOptions } from "./destination/s3.js"
 // Config
 export type { WhistlersConfig, SubscriptionConfig, NotificationTemplate } from "./config/schema.js"
 export { validateConfig, assertValidConfig } from "./config/validate.js"
-export { parseConfigJson, createConfig } from "./config/loader.js"
+export { createConfig } from "./config/loader.js"
 export type { CreateConfigOptions } from "./config/loader.js"
 
 // Bridge

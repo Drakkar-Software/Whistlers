@@ -11,6 +11,15 @@ export interface ClickHouseDestinationOptions {
   username?: string
   /** ClickHouse password (default: `""`). */
   password?: string
+  /**
+   * Format the row inserted into ClickHouse. Receives the outgoing notification and returns
+   * a record that is inserted as a JSONEachRow row — ClickHouse maps object keys to column
+   * names server-side.
+   *
+   * When omitted, the default row contains: `topic`, `source_topic`, `notification` (JSON),
+   * `data` (JSON), `raw_payload` (JSON), `received_at` (ISO timestamp).
+   */
+  format?: (notification: OutgoingNotification) => Record<string, unknown>
 }
 
 interface ClickHouseClient {
@@ -38,10 +47,9 @@ export class ClickHouseDestination implements DestinationAdapter {
 
   async send(notification: OutgoingNotification): Promise<void> {
     const client = await this.getClient()
-    await client.insert({
-      table: this.opts.table,
-      values: [
-        {
+    const row = this.opts.format
+      ? this.opts.format(notification)
+      : {
           topic: notification.topic,
           source_topic: notification.sourceTopic,
           notification:
@@ -51,8 +59,10 @@ export class ClickHouseDestination implements DestinationAdapter {
           data: notification.data !== undefined ? JSON.stringify(notification.data) : null,
           raw_payload: JSON.stringify(notification.rawPayload),
           received_at: new Date().toISOString(),
-        },
-      ],
+        }
+    await client.insert({
+      table: this.opts.table,
+      values: [row],
       format: "JSONEachRow",
     })
   }

@@ -67,8 +67,6 @@ await whistler.stop()
 
 ## Configuration
 
-### From code
-
 ```typescript
 import { createConfig } from "@drakkar.software/whistlers"
 
@@ -86,31 +84,7 @@ const config = createConfig({
 })
 ```
 
-### From JSON
-
-```json
-{
-  "version": 1,
-  "subscriptions": [
-    {
-      "name": "orders",
-      "topics": ["orders.*"],
-      "group": "whistlers",
-      "destinationTopic": "orders",
-      "notification": { "title": "New order", "body": "An order was placed" },
-      "dataFields": ["id", "status"]
-    }
-  ]
-}
-```
-
-```typescript
-import { parseConfigJson } from "@drakkar.software/whistlers"
-
-const config = parseConfigJson(jsonString)
-```
-
-Both builders run the same validation and throw descriptive errors if the config is invalid.
+`createConfig` validates the config and throws a descriptive error if it is invalid.
 
 ### Subscription fields
 
@@ -176,7 +150,18 @@ new FirebaseDestination()
 
 // supply a specific app instance
 new FirebaseDestination({ app: myFirebaseApp })
+
+// custom FCM message — return any FCM fields (notification, data, android, apns, etc.)
+new FirebaseDestination({
+  format: (n) => ({
+    notification: { title: n.notification?.title, body: String(n.rawPayload) },
+    data: { id: String((n.rawPayload as Record<string, unknown>)["id"]) },
+    android: { priority: "high" },
+  }),
+})
 ```
+
+`topic` is always set from the subscription config and cannot be overridden by `format`.
 
 ```
 pnpm add firebase-admin
@@ -184,7 +169,7 @@ pnpm add firebase-admin
 
 ### ClickHouse
 
-Insert each notification as a row. Expected table schema:
+Insert each notification as a row. Default schema:
 
 ```sql
 CREATE TABLE notifications (
@@ -206,6 +191,18 @@ new ClickHouseDestination({
   username: "default",  // optional
   password: "",         // optional
 })
+
+// custom row shape
+new ClickHouseDestination({
+  url: "http://localhost:8123",
+  database: "default",
+  table: "events",
+  format: (n) => ({
+    topic: n.topic,
+    payload: JSON.stringify(n.rawPayload),
+    received_at: new Date().toISOString(),
+  }),
+})
 ```
 
 ```
@@ -214,7 +211,7 @@ pnpm add @clickhouse/client
 
 ### PostgreSQL
 
-Insert each notification as a row. Expected table schema:
+Insert each notification as a row. Default schema:
 
 ```sql
 CREATE TABLE notifications (
@@ -232,6 +229,18 @@ CREATE TABLE notifications (
 new PostgresDestination({
   connectionString: "postgresql://user:pass@host:5432/db",
   table: "notifications",
+})
+
+// custom row shape — keys become column names, values become query parameters
+// supply your own timestamp when using format (the default query uses SQL NOW())
+new PostgresDestination({
+  connectionString: "postgresql://user:pass@host:5432/db",
+  table: "events",
+  format: (n) => ({
+    topic: n.topic,
+    payload: JSON.stringify(n.rawPayload),
+    created_at: new Date().toISOString(),
+  }),
 })
 ```
 
@@ -255,6 +264,13 @@ import { S3Client } from "@aws-sdk/client-s3"
 new S3Destination({
   bucket: "my-bucket",
   client: new S3Client({ endpoint: "http://localhost:4566", region: "us-east-1" }),
+})
+
+// custom body — return an object (JSON-serialised, ContentType: application/json, key ends .json)
+// or a string (used as-is, ContentType: text/plain, no .json extension)
+new S3Destination({
+  bucket: "my-bucket",
+  format: (n) => ({ topic: n.topic, payload: n.rawPayload }),
 })
 ```
 
@@ -334,25 +350,6 @@ const queue = new CustomQueueAdapter({
   },
 })
 ```
-
-## Standalone Server
-
-For deployments that don't embed Whistlers in a larger application, the package ships a compiled server entry point:
-
-```bash
-QUEUE_TYPE=nats \
-QUEUE_URL=nats://localhost:4222 \
-GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \
-  node packages/ts/whistlers/dist/bin/server.js /etc/whistlers/config.json
-```
-
-| Environment variable | Description |
-|---|---|
-| `QUEUE_TYPE` | `nats` or `mqtt` |
-| `QUEUE_URL` | Broker URL |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to the Firebase service-account JSON |
-
-The config argument is a path to a standard Whistlers JSON config file.
 
 ## Deployment (Ansible)
 
