@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- `bin/server.ts` standalone server re-introduced. Reads a JSON config file (path from first CLI argument, default `/etc/whistlers/config.json`), initialises a NATS or MQTT queue adapter (controlled by `QUEUE_TYPE` / `QUEUE_URL` env vars), and starts a `FirebaseDestination` bridge. Handles `SIGINT` / `SIGTERM` for graceful shutdown.
+
+### Fixed
+- Ansible role `defaults/main.yml`: Node.js version updated from 20 to 22 to match the Docker image and CI.
+- Ansible role `defaults/main.yml`: repo URL updated to `Drakkar-Software/Whistlers`.
+- Ansible role `whistlers.service.j2`: systemd unit description and documentation URL updated to reflect the current project location and generic destination support.
+- `README.md`: Ansible requirements example URL updated to `Drakkar-Software/Whistlers`.
+
 ## [0.3.0] — 2026-04-11
 
 ### Added

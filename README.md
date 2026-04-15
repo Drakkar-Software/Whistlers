@@ -363,7 +363,7 @@ Add a `requirements.yml` to your playbook repo pointing at this repository:
 # requirements.yml
 roles:
   - name: whistlers
-    src: https://github.com/Herklos/Whistlers.git
+    src: https://github.com/Drakkar-Software/Whistlers.git
     scm: git
     version: main          # pin to a tag or commit SHA in production
     src_path: infra/ansible/roles/whistlers

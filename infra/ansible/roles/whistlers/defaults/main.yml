@@ -8,11 +8,11 @@ whistlers_install_dir: /opt/whistlers
 whistlers_config_dir: /etc/whistlers
 
 # Git source
-whistlers_repo_url: "https://github.com/Herklos/Whistlers.git"
+whistlers_repo_url: "https://github.com/Drakkar-Software/Whistlers.git"
 whistlers_version: main
 
 # Node.js major version to install via NodeSource
-node_version: "20"
+node_version: "22"
 
 # Queue backend: "nats" or "mqtt"
 whistlers_queue_type: nats
