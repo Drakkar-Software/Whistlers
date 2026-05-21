@@ -139,8 +139,9 @@ When `group` is set, Whistlers uses a **shared subscription** (`$share/{group}/t
 | `ClickHouseDestination` | `@clickhouse/client` | Inserts rows into a ClickHouse table |
 | `PostgresDestination` | `pg` | Inserts rows into a PostgreSQL table |
 | `S3Destination` | `@aws-sdk/client-s3` | Writes notification JSON objects to S3 |
+| `SSEDestination` | _none (built-in)_ | Runs an HTTP server and streams notifications to connected SSE clients |
 
-Each adapter is an optional peer dependency — install only what you use.
+Each adapter is an optional peer dependency — install only what you use. `SSEDestination` uses Node's built-in `node:http`, so it needs no extra dependency.
 
 ### Firebase
 
@@ -277,6 +278,48 @@ new S3Destination({
 ```
 pnpm add @aws-sdk/client-s3
 ```
+
+### Server-Sent Events (SSE)
+
+Run an HTTP server that streams each notification to connected clients as a
+[Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) feed.
+Unlike the other destinations, the SSE server must be started before the bridge so clients can
+connect first — call `listen()` (or inject your own `http.Server`).
+
+```typescript
+// start the server before whistler.start(); use 0 for an ephemeral port
+const sse = new SSEDestination({ path: "/events" })
+await sse.listen(8080)
+new Whistler({ queue, destination: sse, config })
+```
+
+Clients connect with any SSE client and optionally filter by topic with the `?topic=` query
+parameter (repeatable; omit it to receive every topic):
+
+```
+curl -N "http://localhost:8080/events?topic=orders"
+```
+
+Each event defaults to `event: <topic>`, an `id:` of a random UUID, and a `data:` payload of the
+JSON notification (`topic`, `sourceTopic`, `notification`, `data`, `rawPayload`). A `format`
+callback customises the event — return a string (used as the `data:` payload as-is), an object
+(JSON-serialised into `data:`), or an `SSEEventInit` for full control of `data`/`event`/`id`/`retry`:
+
+```typescript
+new SSEDestination({
+  path: "/events",
+  heartbeatMs: 15000, // keep-alive comment interval (0 disables)
+  headers: { "Access-Control-Allow-Origin": "*" }, // extra response headers, e.g. CORS
+  format: (n) => ({ event: n.topic, data: { id: n.data?.["id"], payload: n.rawPayload } }),
+})
+
+// mount onto an existing server instead of calling listen() — its lifecycle stays yours
+// (close() detaches the handler and ends client streams but never closes your server)
+new SSEDestination({ server: myHttpServer })
+```
+
+The bundled `bin/server.ts` can run this destination directly: set `DESTINATION_TYPE=sse`
+(optionally `SSE_PORT`, default `8080`, and `SSE_PATH`, default `/events`).
 
 ## Topic Matching
 

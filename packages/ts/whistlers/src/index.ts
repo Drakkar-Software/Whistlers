@@ -17,6 +17,8 @@ export { PostgresDestination } from "./destination/postgres.js"
 export type { PostgresDestinationOptions } from "./destination/postgres.js"
 export { S3Destination } from "./destination/s3.js"
 export type { S3DestinationOptions } from "./destination/s3.js"
+export { SSEDestination } from "./destination/sse.js"
+export type { SSEDestinationOptions, SSEEventInit } from "./destination/sse.js"
 
 // Config
 export type { WhistlersConfig, SubscriptionConfig, NotificationTemplate } from "./config/schema.js"

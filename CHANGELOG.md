@@ -4,10 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.4.0] — 2026-05-21
 
 ### Added
+- `SSEDestination` — runs an HTTP server (built-in `node:http`, no extra dependency) and streams each notification to connected Server-Sent Events clients. Start it with `listen(port, host?)` (returns the bound `AddressInfo`; use `0` for an ephemeral port) before `whistler.start()`, or inject an existing `http.Server` via the `server` option (its lifecycle stays the caller's — `close()` detaches the handler and ends client streams but never closes an injected server). Clients filter per-connection with the `?topic=` query parameter (repeatable; omitted = all topics). A configurable heartbeat (`heartbeatMs`, default `15000`, `0` disables) keeps idle connections alive. The `format` callback returns a `string` (used as the `data:` payload as-is), a `Record<string, unknown>` (JSON-serialised into `data:`), or an `SSEEventInit` for full control of `data`/`event`/`id`/`retry`; defaults are `event` = topic, `id` = random UUID, `data` = the JSON notification.
 - `bin/server.ts` standalone server re-introduced. Reads a JSON config file (path from first CLI argument, default `/etc/whistlers/config.json`), initialises a NATS or MQTT queue adapter (controlled by `QUEUE_TYPE` / `QUEUE_URL` env vars), and starts a `FirebaseDestination` bridge. Handles `SIGINT` / `SIGTERM` for graceful shutdown.
+- `bin/server.ts` now selects the destination via the `DESTINATION_TYPE` env var (`firebase` default, or `sse` using `SSE_PORT` / `SSE_PATH`). `firebase-admin` is imported lazily, so the `sse` path runs without the optional `firebase-admin` peer dependency installed.
 
 ### Fixed
 - Ansible role `defaults/main.yml`: Node.js version updated from 20 to 22 to match the Docker image and CI.

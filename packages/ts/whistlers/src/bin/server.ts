@@ -1,8 +1,9 @@
 import { readFileSync } from "fs"
-import { initializeApp, applicationDefault } from "firebase-admin/app"
 import { NatsQueueAdapter } from "../queue/nats.js"
 import { MqttQueueAdapter } from "../queue/mqtt.js"
 import { FirebaseDestination } from "../destination/firebase.js"
+import { SSEDestination } from "../destination/sse.js"
+import type { DestinationAdapter } from "../destination/base.js"
 import { Whistler } from "../bridge.js"
 import { assertValidConfig } from "../config/validate.js"
 
@@ -26,8 +27,22 @@ const queue =
     ? new MqttQueueAdapter({ url: queueUrl })
     : new NatsQueueAdapter({ servers: queueUrl })
 
-initializeApp({ credential: applicationDefault() })
-const destination = new FirebaseDestination()
+const destinationType = process.env["DESTINATION_TYPE"] ?? "firebase"
+
+let destination: DestinationAdapter
+if (destinationType === "sse") {
+  const ssePort = Number(process.env["SSE_PORT"] ?? 8080)
+  const ssePath = process.env["SSE_PATH"] ?? "/events"
+  const sse = new SSEDestination({ path: ssePath })
+  await sse.listen(ssePort)
+  console.log(`[info] SSE server listening on port ${ssePort} (path: ${ssePath})`)
+  destination = sse
+} else {
+  // Lazy-import firebase-admin so SSE-only users don't need the optional peer dependency.
+  const { initializeApp, applicationDefault } = await import("firebase-admin/app")
+  initializeApp({ credential: applicationDefault() })
+  destination = new FirebaseDestination()
+}
 
 const whistler = new Whistler({
   queue,
@@ -44,7 +59,9 @@ const whistler = new Whistler({
 })
 
 await whistler.start()
-console.log(`[info] Whistlers started — queue: ${queueType} (${queueUrl}), config: ${configPath}`)
+console.log(
+  `[info] Whistlers started — queue: ${queueType} (${queueUrl}), destination: ${destinationType}, config: ${configPath}`
+)
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
