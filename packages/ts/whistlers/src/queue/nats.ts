@@ -9,24 +9,23 @@ export interface NatsQueueAdapterOptions {
  * Queue adapter backed by NATS core (not JetStream).
  * Uses queue groups when `group` is specified on subscriptions.
  *
- * Requires the `nats` package to be installed.
+ * Requires the `@nats-io/transport-node` package to be installed.
  */
 export class NatsQueueAdapter implements QueueAdapter {
-  private nc: import("nats").NatsConnection | null = null
-  private activeSubscriptions: Map<string, import("nats").Subscription> = new Map()
+  private nc: import("@nats-io/transport-node").NatsConnection | null = null
+  private activeSubscriptions: Map<string, import("@nats-io/transport-node").Subscription> =
+    new Map()
   private handlers: MessageHandler[] = []
 
   constructor(private readonly opts: NatsQueueAdapterOptions) {}
 
   async connect(): Promise<void> {
-    const { connect } = await import("nats")
+    const { connect } = await import("@nats-io/transport-node")
     this.nc = await connect({ servers: this.opts.servers })
   }
 
   async subscribe(subscriptions: TopicSubscription[]): Promise<void> {
     if (!this.nc) throw new Error("Not connected. Call connect() first.")
-    const { StringCodec } = await import("nats")
-    const sc = StringCodec()
 
     for (const { topic, group } of subscriptions) {
       const key = group ? `${group}:${topic}` : topic
@@ -41,7 +40,7 @@ export class NatsQueueAdapter implements QueueAdapter {
         for await (const msg of sub) {
           const message: QueueMessage = {
             topic: msg.subject,
-            payload: sc.decode(msg.data),
+            payload: msg.string(),
             timestamp: Date.now(),
             headers: msg.headers
               ? Object.fromEntries(

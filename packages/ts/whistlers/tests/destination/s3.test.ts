@@ -4,8 +4,14 @@ import type { OutgoingNotification } from "../../src/destination/base.js"
 
 const mockSend = vi.fn().mockResolvedValue({})
 const mockDestroy = vi.fn()
-const MockS3Client = vi.fn(() => ({ send: mockSend, destroy: mockDestroy }))
-const MockPutObjectCommand = vi.fn((input: unknown) => input)
+// vitest 4 requires constructor mocks to be constructable (regular function / class),
+// so these use `function` expressions rather than arrows — both are invoked with `new`.
+const MockS3Client = vi.fn(function () {
+  return { send: mockSend, destroy: mockDestroy }
+})
+const MockPutObjectCommand = vi.fn(function (input: unknown) {
+  return input
+})
 
 vi.mock("@aws-sdk/client-s3", () => ({
   S3Client: MockS3Client,
@@ -15,8 +21,12 @@ vi.mock("@aws-sdk/client-s3", () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mockSend.mockResolvedValue({})
-  MockS3Client.mockReturnValue({ send: mockSend, destroy: mockDestroy })
-  MockPutObjectCommand.mockImplementation((input: unknown) => input)
+  MockS3Client.mockImplementation(function () {
+    return { send: mockSend, destroy: mockDestroy }
+  })
+  MockPutObjectCommand.mockImplementation(function (input: unknown) {
+    return input
+  })
 })
 
 function makeNotification(overrides: Partial<OutgoingNotification> = {}): OutgoingNotification {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NatsQueueAdapter } from "../../src/queue/nats.js"
 
-// Mock the entire `nats` module
+// Mock the `@nats-io/transport-node` module
 const mockSubscription = {
   unsubscribe: vi.fn(),
   [Symbol.asyncIterator]: vi.fn(),
@@ -12,11 +12,8 @@ const mockConnection = {
   drain: vi.fn().mockResolvedValue(undefined),
 }
 
-vi.mock("nats", () => ({
+vi.mock("@nats-io/transport-node", () => ({
   connect: vi.fn().mockResolvedValue(mockConnection),
-  StringCodec: vi.fn(() => ({
-    decode: (data: Uint8Array) => Buffer.from(data).toString("utf8"),
-  })),
 }))
 
 beforeEach(() => {
@@ -54,7 +51,7 @@ describe("NatsQueueAdapter.matchesTopic", () => {
 
 describe("NatsQueueAdapter lifecycle", () => {
   it("connect calls nats.connect with servers option", async () => {
-    const { connect } = await import("nats")
+    const { connect } = await import("@nats-io/transport-node")
     const adapter = new NatsQueueAdapter({ servers: "nats://localhost:4222" })
     await adapter.connect()
     expect(connect).toHaveBeenCalledWith({ servers: "nats://localhost:4222" })
@@ -120,6 +117,7 @@ describe("NatsQueueAdapter lifecycle", () => {
     const fakeMsg = {
       subject: "orders.created",
       data: new TextEncoder().encode('{"id":"1"}'),
+      string: () => '{"id":"1"}',
       headers: null,
     }
     mockSubscription[Symbol.asyncIterator].mockReturnValueOnce({

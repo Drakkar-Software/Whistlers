@@ -4,7 +4,11 @@ import type { OutgoingNotification } from "../../src/destination/base.js"
 
 const mockQuery = vi.fn().mockResolvedValue({ rows: [] })
 const mockEnd = vi.fn().mockResolvedValue(undefined)
-const MockPool = vi.fn(() => ({ query: mockQuery, end: mockEnd }))
+// vitest 4 requires constructor mocks to be constructable (regular function / class),
+// so this uses a `function` expression rather than an arrow — it is invoked with `new`.
+const MockPool = vi.fn(function () {
+  return { query: mockQuery, end: mockEnd }
+})
 
 vi.mock("pg", () => ({ Pool: MockPool }))
 
@@ -12,7 +16,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockQuery.mockResolvedValue({ rows: [] })
   mockEnd.mockResolvedValue(undefined)
-  MockPool.mockReturnValue({ query: mockQuery, end: mockEnd })
+  MockPool.mockImplementation(function () {
+    return { query: mockQuery, end: mockEnd }
+  })
 })
 
 function makeNotification(overrides: Partial<OutgoingNotification> = {}): OutgoingNotification {

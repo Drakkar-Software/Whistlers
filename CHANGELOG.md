@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] — 2026-05-21
+
+### Changed
+- **NATS adapter migrated off the deprecated `nats` v2 package to `@nats-io/transport-node` v3** (the nats.js v3 package split). `NatsQueueAdapter`'s public API is unchanged — same `servers` option and `nats://` URLs — so no consumer code changes are required. Message decoding now uses the built-in `Msg.string()` method (the `StringCodec`/`JSONCodec` helpers were removed in v3).
+- Bumped `mqtt` (`^5.10.1` → `^5.15.1`).
+- Bumped build/test tooling: `typescript` `5.x` → `6.x`, `vitest` `2.x` → `4.x` (now requires `vite`, pinned to `8.x`), `@types/node` `20.x` → `22.x` (aligned with the Node 22 runtime), `firebase-admin` dev dependency `13.4` → `13.10`. Refreshed `@aws-sdk/client-s3`, `@clickhouse/client`, `pg`, and `@types/pg` to their latest in-range versions. `peerDependencies` ranges are unchanged, so consumers are not forced to upgrade.
+
 ## [0.4.0] — 2026-05-21
 
 ### Added
