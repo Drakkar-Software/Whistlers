@@ -86,6 +86,17 @@ const config = createConfig({
 
 `createConfig` validates the config and throws a descriptive error if it is invalid.
 
+To load config from a JSON string (e.g. a file read from disk), use `parseConfigJson`:
+
+```typescript
+import { parseConfigJson } from "@drakkar.software/whistlers"
+import { readFileSync } from "fs"
+
+const config = parseConfigJson(readFileSync("whistlers.json", "utf8"))
+```
+
+`parseConfigJson` throws a descriptive error for invalid JSON or a structurally invalid config.
+
 ### Subscription fields
 
 | Field | Type | Required | Description |
@@ -96,6 +107,58 @@ const config = createConfig({
 | `destinationTopic` | `string` | | Destination topic name. Defaults to the sanitized source topic (`.` and `/` → `-`). Call `sanitizeTopic(topic)` for custom transformations. |
 | `notification` | `{ title?, body? }` | | Static notification content passed through to the destination |
 | `dataFields` | `string[]` | | Top-level payload fields to forward as string key/value pairs |
+
+### Namespaces
+
+Namespaces group subscriptions under a named key. Each namespace prefixes its subscriptions' destination topics with `{name}-` and attaches the namespace name as `namespace` on the `OutgoingNotification` so destination adapters can segment traffic.
+
+```typescript
+import type { NamespaceConfig } from "@drakkar.software/whistlers"
+
+function makeTenantNamespace(tenant: string): NamespaceConfig {
+  return {
+    subscriptions: [
+      {
+        name: "orders",
+        topics: ["orders.*"],
+        group: `whistlers-${tenant}`,
+        destinationTopic: "orders",   // becomes `{tenant}-orders` at runtime
+        notification: { title: "Order update" },
+        dataFields: ["id", "status"],
+      },
+    ],
+  }
+}
+
+const config = createConfig({
+  subscriptions: [
+    // root subscriptions — no prefix applied
+    { name: "system-alerts", topics: ["system.alerts.>"], destinationTopic: "system-alerts" },
+  ],
+  namespaces: {
+    acme:   makeTenantNamespace("acme"),
+    globex: makeTenantNamespace("globex"),
+  },
+})
+```
+
+A message on `orders.created` is forwarded **twice**: once as topic `acme-orders` (with `namespace: "acme"`) and once as `globex-orders` (with `namespace: "globex"`). Mobile clients subscribe to the FCM topic for their tenant.
+
+**Rules:**
+- Namespace keys must match `[a-zA-Z0-9_-]+`.
+- Each namespace must contain at least one subscription.
+- Subscription `name`s must be unique within a namespace (root is its own scope — the same name may repeat across scopes).
+- The `{namespace}-` prefix is applied to `destinationTopic` (explicit or source-derived). Source topic patterns are **not** modified.
+
+The `namespace` field is available on `OutgoingNotification` for all destination adapters:
+
+```typescript
+new FirebaseDestination({
+  format: (n) => ({
+    data: { namespace: n.namespace ?? "global" },
+  }),
+})
+```
 
 ## Queue Adapters
 
@@ -344,9 +407,12 @@ const whistler = new Whistler({
     warn: console.warn,
     error: console.error,
   },
-  onError: (err, { message, subscription }) => {
+  onError: (err, { message, subscription, namespace }) => {
     // called after the logger, with the raw error and context
-    metrics.increment("whistlers.forward_error", { topic: message.topic })
+    metrics.increment("whistlers.forward_error", {
+      topic: message.topic,
+      namespace: namespace ?? "root",
+    })
   },
 })
 ```
@@ -452,6 +518,7 @@ ansible-playbook -i inventory.ini infra/ansible/site.yml
 | `whistlers_queue_url` | `nats://localhost:4222` | Broker URL |
 | `whistlers_firebase_credentials_path` | `/etc/whistlers/service-account.json` | Path to the Firebase service-account on the target host |
 | `whistlers_subscriptions` | `[]` | List of subscription objects (same schema as the JSON config) |
+| `whistlers_namespaces` | `{}` | Map of namespace name → `{ subscriptions: [] }` objects |
 | `whistlers_version` | `main` | Git branch, tag, or commit to deploy |
 | `whistlers_install_dir` | `/opt/whistlers` | Where the repo is cloned |
 

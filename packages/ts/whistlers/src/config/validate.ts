@@ -1,5 +1,75 @@
 import type { WhistlersConfig } from "./schema.js"
 
+const NAMESPACE_NAME_RE = /^[a-zA-Z0-9_-]+$/
+
+/**
+ * Validate an array of subscription objects and return error strings.
+ * Assumes `subs` has already been confirmed to be an array; does NOT
+ * require it to be non-empty (callers add that check when needed).
+ */
+function validateSubscriptions(subs: unknown[], prefix: string): string[] {
+  const errors: string[] = []
+  const names = new Set<string>()
+
+  for (let i = 0; i < subs.length; i++) {
+    const sub = subs[i] as Record<string, unknown>
+    const subPrefix = `${prefix}[${i}]`
+
+    if (typeof sub["name"] !== "string" || sub["name"].trim() === "") {
+      errors.push(`${subPrefix}.name must be a non-empty string`)
+    } else {
+      if (names.has(sub["name"])) {
+        errors.push(`${subPrefix}.name "${sub["name"]}" is duplicated`)
+      }
+      names.add(sub["name"])
+    }
+
+    if (!Array.isArray(sub["topics"]) || (sub["topics"] as unknown[]).length === 0) {
+      errors.push(`${subPrefix}.topics must be a non-empty array`)
+    } else {
+      for (let j = 0; j < (sub["topics"] as unknown[]).length; j++) {
+        if (typeof (sub["topics"] as unknown[])[j] !== "string") {
+          errors.push(`${subPrefix}.topics[${j}] must be a string`)
+        }
+      }
+    }
+
+    if (sub["group"] !== undefined && typeof sub["group"] !== "string") {
+      errors.push(`${subPrefix}.group must be a string`)
+    }
+
+    if (sub["destinationTopic"] !== undefined) {
+      if (typeof sub["destinationTopic"] !== "string") {
+        errors.push(`${subPrefix}.destinationTopic must be a string`)
+      } else if (!/^[a-zA-Z0-9\-_.~%]+$/.test(sub["destinationTopic"])) {
+        errors.push(
+          `${subPrefix}.destinationTopic "${sub["destinationTopic"]}" contains characters not allowed by FCM`
+        )
+      }
+    }
+
+    if (sub["notification"] !== undefined) {
+      if (typeof sub["notification"] !== "object" || sub["notification"] === null) {
+        errors.push(`${subPrefix}.notification must be an object`)
+      }
+    }
+
+    if (sub["dataFields"] !== undefined) {
+      if (!Array.isArray(sub["dataFields"])) {
+        errors.push(`${subPrefix}.dataFields must be an array`)
+      } else {
+        for (let j = 0; j < (sub["dataFields"] as unknown[]).length; j++) {
+          if (typeof (sub["dataFields"] as unknown[])[j] !== "string") {
+            errors.push(`${subPrefix}.dataFields[${j}] must be a string`)
+          }
+        }
+      }
+    }
+  }
+
+  return errors
+}
+
 export function validateConfig(config: unknown): string[] {
   const errors: string[] = []
 
@@ -18,59 +88,37 @@ export function validateConfig(config: unknown): string[] {
     return errors
   }
 
-  const names = new Set<string>()
+  errors.push(...validateSubscriptions(c["subscriptions"] as unknown[], "subscriptions"))
 
-  for (let i = 0; i < c["subscriptions"].length; i++) {
-    const sub = c["subscriptions"][i] as Record<string, unknown>
-    const prefix = `subscriptions[${i}]`
-
-    if (typeof sub["name"] !== "string" || sub["name"].trim() === "") {
-      errors.push(`${prefix}.name must be a non-empty string`)
+  if (c["namespaces"] !== undefined) {
+    if (
+      typeof c["namespaces"] !== "object" ||
+      c["namespaces"] === null ||
+      Array.isArray(c["namespaces"])
+    ) {
+      errors.push("namespaces must be an object")
     } else {
-      if (names.has(sub["name"])) {
-        errors.push(`${prefix}.name "${sub["name"]}" is duplicated`)
-      }
-      names.add(sub["name"])
-    }
-
-    if (!Array.isArray(sub["topics"]) || (sub["topics"] as unknown[]).length === 0) {
-      errors.push(`${prefix}.topics must be a non-empty array`)
-    } else {
-      for (let j = 0; j < (sub["topics"] as unknown[]).length; j++) {
-        if (typeof (sub["topics"] as unknown[])[j] !== "string") {
-          errors.push(`${prefix}.topics[${j}] must be a string`)
+      for (const [nsName, nsConfig] of Object.entries(
+        c["namespaces"] as Record<string, unknown>
+      )) {
+        if (!NAMESPACE_NAME_RE.test(nsName)) {
+          errors.push(
+            `namespaces["${nsName}"]: name must only contain letters, digits, hyphens, and underscores`
+          )
         }
-      }
-    }
 
-    if (sub["group"] !== undefined && typeof sub["group"] !== "string") {
-      errors.push(`${prefix}.group must be a string`)
-    }
+        if (typeof nsConfig !== "object" || nsConfig === null) {
+          errors.push(`namespaces["${nsName}"] must be an object`)
+          continue
+        }
 
-    if (sub["destinationTopic"] !== undefined) {
-      if (typeof sub["destinationTopic"] !== "string") {
-        errors.push(`${prefix}.destinationTopic must be a string`)
-      } else if (!/^[a-zA-Z0-9\-_.~%]+$/.test(sub["destinationTopic"])) {
-        errors.push(
-          `${prefix}.destinationTopic "${sub["destinationTopic"]}" contains characters not allowed by FCM`
-        )
-      }
-    }
-
-    if (sub["notification"] !== undefined) {
-      if (typeof sub["notification"] !== "object" || sub["notification"] === null) {
-        errors.push(`${prefix}.notification must be an object`)
-      }
-    }
-
-    if (sub["dataFields"] !== undefined) {
-      if (!Array.isArray(sub["dataFields"])) {
-        errors.push(`${prefix}.dataFields must be an array`)
-      } else {
-        for (let j = 0; j < (sub["dataFields"] as unknown[]).length; j++) {
-          if (typeof (sub["dataFields"] as unknown[])[j] !== "string") {
-            errors.push(`${prefix}.dataFields[${j}] must be a string`)
-          }
+        const nsSubs = (nsConfig as Record<string, unknown>)["subscriptions"]
+        if (!Array.isArray(nsSubs) || (nsSubs as unknown[]).length === 0) {
+          errors.push(`namespaces["${nsName}"].subscriptions must be a non-empty array`)
+        } else {
+          errors.push(
+            ...validateSubscriptions(nsSubs as unknown[], `namespaces["${nsName}"].subscriptions`)
+          )
         }
       }
     }

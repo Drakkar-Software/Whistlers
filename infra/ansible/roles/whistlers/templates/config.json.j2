@@ -1,4 +1,7 @@
 {
   "version": 1,
-  "subscriptions": {{ whistlers_subscriptions | to_nice_json(indent=2) | indent(2) }}
+  "subscriptions": {{ whistlers_subscriptions | to_nice_json(indent=2) | indent(2) }}{% if whistlers_namespaces %},
+  "namespaces": {{ whistlers_namespaces | to_nice_json(indent=2) | indent(2) }}{% endif %}
+
 }
+

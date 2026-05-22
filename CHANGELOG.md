@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] — 2026-05-22
+
+### Added
+- **Namespace-based config** — `WhistlersConfig` now accepts an optional `namespaces` record (`namespaces?: Record<string, NamespaceConfig>`). Each namespace is a named group of `SubscriptionConfig` entries that:
+  - Prefixes their destination topics with `{namespace}-` at runtime (applied even when `destinationTopic` is set explicitly, and to the source-derived default).
+  - Attaches the namespace name as `namespace` on every `OutgoingNotification`, letting destination adapters segment traffic by namespace.
+  - Scopes subscription-name uniqueness (the same name may appear in different namespaces or in root without conflict).
+- **`parseConfigJson(raw: string): WhistlersConfig`** — parses and validates a JSON config string, throwing a descriptive error for bad JSON or an invalid config. Exported from the package; used internally by `bin/server.ts` (replaces the inline `JSON.parse` + `assertValidConfig` that was there before).
+- `NamespaceConfig` type exported from the package.
+- `CreateConfigOptions.namespaces?` — pass namespaces directly to `createConfig`.
+- `OutgoingNotification.namespace?: string` — the namespace of the matched subscription, when present.
+- `WhistlerOptions.onError` context now includes `namespace?: string`.
+- Example `examples/ts/nats-namespaces-to-firebase.ts` — demonstrates per-tenant namespacing with a `makeTenantNamespace` factory.
+
 ## [0.4.1] — 2026-05-21
 
 ### Changed

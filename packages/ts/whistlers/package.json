@@ -1,6 +1,6 @@
 {
   "name": "@drakkar.software/whistlers",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Message-queue to destination bridge — Firebase, ClickHouse, PostgreSQL, S3, SSE",
   "type": "module",
   "main": "dist/index.js",

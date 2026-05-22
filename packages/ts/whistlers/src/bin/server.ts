@@ -5,19 +5,18 @@ import { FirebaseDestination } from "../destination/firebase.js"
 import { SSEDestination } from "../destination/sse.js"
 import type { DestinationAdapter } from "../destination/base.js"
 import { Whistler } from "../bridge.js"
-import { assertValidConfig } from "../config/validate.js"
+import { parseConfigJson } from "../config/loader.js"
+import type { WhistlersConfig } from "../config/schema.js"
 
 const configPath = process.argv[2] ?? "/etc/whistlers/config.json"
 
-let rawConfig: unknown
+let rawConfig: WhistlersConfig
 try {
-  rawConfig = JSON.parse(readFileSync(configPath, "utf8"))
+  rawConfig = parseConfigJson(readFileSync(configPath, "utf8"))
 } catch (err) {
   console.error(`[error] Failed to load config from "${configPath}":`, err)
   process.exit(1)
 }
-
-assertValidConfig(rawConfig)
 
 const queueType = process.env["QUEUE_TYPE"] ?? "nats"
 const queueUrl = process.env["QUEUE_URL"] ?? "nats://localhost:4222"

@@ -17,7 +17,10 @@ export interface WhistlerOptions {
    * Called when `destination.send()` throws. The bridge continues after the error.
    * If omitted, errors are only logged (when a logger is provided).
    */
-  onError?: (err: unknown, context: { message: QueueMessage; subscription: SubscriptionConfig }) => void
+  onError?: (
+    err: unknown,
+    context: { message: QueueMessage; subscription: SubscriptionConfig; namespace?: string }
+  ) => void
 }
 
 /**
@@ -79,19 +82,21 @@ export class Whistler {
     await this.queue.subscribe(this.collectSubscriptions())
 
     this.queue.onMessage(async (message) => {
-      for (const sub of this.config.subscriptions) {
+      for (const { sub, namespace } of this.allSubscriptions()) {
         const matched = sub.topics.some((pattern) =>
           this.queue.matchesTopic(pattern, message.topic)
         )
         if (!matched) continue
 
         const rawPayload = tryParseJson(message.payload)
-        const destTopic = sub.destinationTopic ?? sanitizeTopic(message.topic)
+        const baseTopic = sub.destinationTopic ?? sanitizeTopic(message.topic)
+        const destTopic = namespace !== undefined ? `${namespace}-${baseTopic}` : baseTopic
         const data = sub.dataFields ? extractData(rawPayload, sub.dataFields) : undefined
 
         const notification: OutgoingNotification = {
           topic: destTopic,
           sourceTopic: message.topic,
+          ...(namespace !== undefined ? { namespace } : {}),
           notification: sub.notification,
           rawPayload,
           ...(data ? { data } : {}),
@@ -102,7 +107,7 @@ export class Whistler {
           this.logger?.info(`Forwarded message on "${message.topic}" → "${destTopic}"`)
         } catch (err) {
           this.logger?.error(`Failed to forward "${message.topic}" → "${destTopic}"`, err)
-          this.onError?.(err, { message, subscription: sub })
+          this.onError?.(err, { message, subscription: sub, namespace })
         }
       }
     })
@@ -117,14 +122,31 @@ export class Whistler {
   }
 
   /**
-   * Collect the unique set of (topic, group) pairs across all subscriptions.
-   * Deduplicates by the effective subscription key so the same topic+group is
-   * only subscribed once even if it appears in multiple `SubscriptionConfig` entries.
+   * Flatten root subscriptions and all namespaced subscriptions into a single list,
+   * each tagged with its namespace (if any). Used by both the message loop and
+   * `collectSubscriptions` so both always see the full set.
+   */
+  private allSubscriptions(): { sub: SubscriptionConfig; namespace?: string }[] {
+    const result: { sub: SubscriptionConfig; namespace?: string }[] =
+      this.config.subscriptions.map((sub) => ({ sub }))
+    for (const [ns, nsConfig] of Object.entries(this.config.namespaces ?? {})) {
+      for (const sub of nsConfig.subscriptions) {
+        result.push({ sub, namespace: ns })
+      }
+    }
+    return result
+  }
+
+  /**
+   * Collect the unique set of (topic, group) pairs across all subscriptions
+   * (root and namespaced). Deduplicates by the effective subscription key so
+   * the same topic+group is only subscribed once even if it appears in multiple
+   * `SubscriptionConfig` entries across scopes.
    */
   private collectSubscriptions(): TopicSubscription[] {
     const seen = new Set<string>()
     const result: TopicSubscription[] = []
-    for (const sub of this.config.subscriptions) {
+    for (const { sub } of this.allSubscriptions()) {
       for (const topic of sub.topics) {
         const key = sub.group ? `${sub.group}:${topic}` : topic
         if (!seen.has(key)) {

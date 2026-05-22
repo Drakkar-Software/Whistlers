@@ -32,7 +32,25 @@ export interface SubscriptionConfig {
   dataFields?: string[]
 }
 
+export interface NamespaceConfig {
+  /**
+   * Subscriptions scoped to this namespace.
+   * Each subscription's destination topic is automatically prefixed with `{namespaceName}-`.
+   */
+  subscriptions: SubscriptionConfig[]
+}
+
 export interface WhistlersConfig {
   version: 1
   subscriptions: SubscriptionConfig[]
+  /**
+   * Named groups of subscriptions. Each key prefixes its subscriptions' destination topics
+   * with `{name}-` and is attached as `namespace` on the `OutgoingNotification` so
+   * destinations can segment traffic by namespace.
+   *
+   * Key rules: must match `[a-zA-Z0-9_-]+`. Subscription `name`s must be unique within
+   * each namespace; the root subscriptions list is its own scope (names may repeat across
+   * scopes).
+   */
+  namespaces?: Record<string, NamespaceConfig>
 }

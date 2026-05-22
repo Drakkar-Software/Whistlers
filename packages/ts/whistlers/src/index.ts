@@ -21,9 +21,9 @@ export { SSEDestination } from "./destination/sse.js"
 export type { SSEDestinationOptions, SSEEventInit } from "./destination/sse.js"
 
 // Config
-export type { WhistlersConfig, SubscriptionConfig, NotificationTemplate } from "./config/schema.js"
+export type { WhistlersConfig, NamespaceConfig, SubscriptionConfig, NotificationTemplate } from "./config/schema.js"
 export { validateConfig, assertValidConfig } from "./config/validate.js"
-export { createConfig } from "./config/loader.js"
+export { createConfig, parseConfigJson } from "./config/loader.js"
 export type { CreateConfigOptions } from "./config/loader.js"
 
 // Bridge

@@ -101,3 +101,112 @@ describe("assertValidConfig", () => {
     ).toThrow("Invalid WhistlersConfig")
   })
 })
+
+describe("validateConfig — namespaces", () => {
+  const rootSub = { name: "root", topics: ["root.*"] }
+  const nsSub = { name: "orders", topics: ["orders.*"] }
+
+  it("accepts a valid config with namespaces", () => {
+    expect(
+      validateConfig({
+        version: 1,
+        subscriptions: [rootSub],
+        namespaces: {
+          tenantA: { subscriptions: [nsSub] },
+        },
+      })
+    ).toEqual([])
+  })
+
+  it("accepts an empty root subscriptions array when namespaces are present", () => {
+    expect(
+      validateConfig({
+        version: 1,
+        subscriptions: [],
+        namespaces: { tenantA: { subscriptions: [nsSub] } },
+      })
+    ).toEqual([])
+  })
+
+  it("rejects namespaces that is an array", () => {
+    const errors = validateConfig({ version: 1, subscriptions: [], namespaces: [] })
+    expect(errors.some((e) => e.includes("namespaces must be an object"))).toBe(true)
+  })
+
+  it("rejects a namespace name with invalid characters", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: { "bad name!": { subscriptions: [nsSub] } },
+    })
+    expect(errors.some((e) => e.includes("bad name!") && e.includes("name must only contain"))).toBe(true)
+  })
+
+  it("rejects a namespace with an empty subscriptions array", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: { tenantA: { subscriptions: [] } },
+    })
+    expect(errors.some((e) => e.includes('namespaces["tenantA"].subscriptions must be a non-empty array'))).toBe(true)
+  })
+
+  it("rejects a namespace with non-array subscriptions", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: { tenantA: { subscriptions: "bad" } },
+    })
+    expect(errors.some((e) => e.includes('namespaces["tenantA"].subscriptions must be a non-empty array'))).toBe(true)
+  })
+
+  it("rejects duplicate subscription names within a namespace", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: {
+        tenantA: {
+          subscriptions: [
+            { name: "orders", topics: ["a"] },
+            { name: "orders", topics: ["b"] },
+          ],
+        },
+      },
+    })
+    expect(errors.some((e) => e.includes("duplicated"))).toBe(true)
+  })
+
+  it("allows the same subscription name in root and a namespace (different scopes)", () => {
+    expect(
+      validateConfig({
+        version: 1,
+        subscriptions: [{ name: "orders", topics: ["a"] }],
+        namespaces: { tenantA: { subscriptions: [{ name: "orders", topics: ["b"] }] } },
+      })
+    ).toEqual([])
+  })
+
+  it("allows the same subscription name in two different namespaces", () => {
+    expect(
+      validateConfig({
+        version: 1,
+        subscriptions: [],
+        namespaces: {
+          tenantA: { subscriptions: [{ name: "orders", topics: ["a"] }] },
+          tenantB: { subscriptions: [{ name: "orders", topics: ["b"] }] },
+        },
+      })
+    ).toEqual([])
+  })
+
+  it("runs per-subscription validation inside namespaces", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: {
+        tenantA: { subscriptions: [{ name: "", topics: ["a"] }] },
+      },
+    })
+    expect(errors.some((e) => e.includes('namespaces["tenantA"].subscriptions[0].name'))).toBe(true)
+  })
+})

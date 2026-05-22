@@ -202,6 +202,130 @@ describe("Whistler message routing", () => {
   })
 })
 
+describe("Whistler namespace routing", () => {
+  it("prefixes destination topic with namespace name", async () => {
+    const queue = new MemoryQueueAdapter()
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [],
+      namespaces: {
+        tenantA: {
+          subscriptions: [{ name: "orders", topics: ["orders.*"] }],
+        },
+      },
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    await queue.simulate(makeMessage("orders.created"))
+    expect(dest.sent[0]?.topic).toBe("tenantA-orders-created")
+    await whistler.stop()
+  })
+
+  it("attaches namespace field to OutgoingNotification", async () => {
+    const queue = new MemoryQueueAdapter()
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [],
+      namespaces: {
+        tenantA: {
+          subscriptions: [{ name: "orders", topics: ["orders.*"] }],
+        },
+      },
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    await queue.simulate(makeMessage("orders.created"))
+    expect(dest.sent[0]?.namespace).toBe("tenantA")
+    await whistler.stop()
+  })
+
+  it("prefixes even an explicit destinationTopic with the namespace", async () => {
+    const queue = new MemoryQueueAdapter()
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [],
+      namespaces: {
+        tenantA: {
+          subscriptions: [
+            { name: "orders", topics: ["orders.*"], destinationTopic: "order-events" },
+          ],
+        },
+      },
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    await queue.simulate(makeMessage("orders.created"))
+    expect(dest.sent[0]?.topic).toBe("tenantA-order-events")
+    await whistler.stop()
+  })
+
+  it("root subscriptions are unaffected by namespaces (no prefix, no namespace field)", async () => {
+    const queue = new MemoryQueueAdapter()
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [{ name: "root-orders", topics: ["orders.*"], destinationTopic: "orders" }],
+      namespaces: {
+        tenantA: {
+          subscriptions: [
+            { name: "tenant-orders", topics: ["orders.*"], destinationTopic: "orders" },
+          ],
+        },
+      },
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    await queue.simulate(makeMessage("orders.created"))
+
+    expect(dest.sent).toHaveLength(2)
+    const root = dest.sent.find((n) => n.namespace === undefined)!
+    const ns = dest.sent.find((n) => n.namespace === "tenantA")!
+    expect(root.topic).toBe("orders")
+    expect(root.namespace).toBeUndefined()
+    expect(ns.topic).toBe("tenantA-orders")
+    expect(ns.namespace).toBe("tenantA")
+    await whistler.stop()
+  })
+
+  it("deduplicates queue subscriptions even when same topic appears in multiple namespaces", async () => {
+    const received: TopicSubscription[] = []
+    const queue = new CustomQueueAdapter({
+      onSubscribe: async (subs) => { received.push(...subs) },
+    })
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [],
+      namespaces: {
+        tenantA: { subscriptions: [{ name: "orders", topics: ["orders.*"] }] },
+        tenantB: { subscriptions: [{ name: "orders", topics: ["orders.*"] }] },
+      },
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    // Both namespaces share the same source topic pattern — should subscribe once
+    expect(received.filter((s) => s.topic === "orders.*")).toHaveLength(1)
+    await whistler.stop()
+  })
+
+  it("fans out a message to all matching namespaced subscriptions", async () => {
+    const queue = new MemoryQueueAdapter()
+    const dest = new MemoryDestination()
+    const config = createConfig({
+      subscriptions: [],
+      namespaces: {
+        tenantA: { subscriptions: [{ name: "orders", topics: ["orders.*"] }] },
+        tenantB: { subscriptions: [{ name: "orders", topics: ["orders.*"] }] },
+      },
+    })
+    const whistler = new Whistler({ queue, destination: dest, config })
+    await whistler.start()
+    await queue.simulate(makeMessage("orders.created"))
+    expect(dest.sent).toHaveLength(2)
+    const namespaces = dest.sent.map((n) => n.namespace).sort()
+    expect(namespaces).toEqual(["tenantA", "tenantB"])
+    await whistler.stop()
+  })
+})
+
 describe("Whistler error handling", () => {
   it("calls onError and continues when destination.send throws", async () => {
     const queue = new MemoryQueueAdapter()

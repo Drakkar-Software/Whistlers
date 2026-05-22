@@ -40,6 +40,18 @@ whistlers_firebase_credentials_path: "{{ whistlers_config_dir }}/service-account
 #       dataFields: ["id", "status"]
 whistlers_subscriptions: []
 
+# Namespaces injected into the generated config.json.
+# Each key is a namespace name (must match [a-zA-Z0-9_-]+) and maps to an object
+# with a `subscriptions` list. Destination topics are prefixed with `{name}-` at runtime.
+# Example:
+#   whistlers_namespaces:
+#     acme:
+#       subscriptions:
+#         - name: orders
+#           topics: ["orders.*"]
+#           destinationTopic: orders
+whistlers_namespaces: {}
+
 # systemd service restart policy
 whistlers_service_restart: always
 whistlers_service_restart_sec: 5
