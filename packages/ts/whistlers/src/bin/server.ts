@@ -3,6 +3,7 @@ import { NatsQueueAdapter } from "../queue/nats.js"
 import { MqttQueueAdapter } from "../queue/mqtt.js"
 import { FirebaseDestination } from "../destination/firebase.js"
 import { SSEDestination } from "../destination/sse.js"
+import { NamespaceRoutingDestination } from "../destination/namespace-routing.js"
 import type { DestinationAdapter } from "../destination/base.js"
 import { Whistler } from "../bridge.js"
 import { parseConfigJson } from "../config/loader.js"
@@ -38,9 +39,45 @@ if (destinationType === "sse") {
   destination = sse
 } else {
   // Lazy-import firebase-admin so SSE-only users don't need the optional peer dependency.
-  const { initializeApp, applicationDefault } = await import("firebase-admin/app")
-  initializeApp({ credential: applicationDefault() })
-  destination = new FirebaseDestination()
+  const { initializeApp, applicationDefault, cert } = await import("firebase-admin/app")
+
+  // Per-namespace Firebase projects: each namespace with `firebaseCredentials` gets a
+  // dedicated named firebase-admin app initialized from its service-account key file.
+  const namespaces = Object.entries(rawConfig.namespaces ?? {})
+  const routes: Record<string, DestinationAdapter> = {}
+  for (const [namespace, nsConfig] of namespaces) {
+    if (nsConfig.firebaseCredentials) {
+      const app = initializeApp({ credential: cert(nsConfig.firebaseCredentials) }, namespace)
+      routes[namespace] = new FirebaseDestination({ app })
+      console.log(
+        `[info] Namespace "${namespace}" → Firebase project from ${nsConfig.firebaseCredentials}`
+      )
+    }
+  }
+
+  // The default app (Application Default Credentials) backstops root subscriptions and any
+  // namespace without its own `firebaseCredentials`. Skip it — and avoid requiring ADC — when
+  // there is nothing for it to handle (no root subscriptions and every namespace is routed).
+  const needsDefaultApp =
+    rawConfig.subscriptions.length > 0 ||
+    namespaces.length === 0 ||
+    namespaces.some(([, ns]) => !ns.firebaseCredentials)
+
+  let defaultDestination: FirebaseDestination | undefined
+  if (needsDefaultApp) {
+    initializeApp({ credential: applicationDefault() })
+    defaultDestination = new FirebaseDestination()
+  }
+
+  if (Object.keys(routes).length === 0) {
+    // No per-namespace projects → a plain default-app destination (needsDefaultApp is true here).
+    destination = defaultDestination as FirebaseDestination
+  } else {
+    destination = new NamespaceRoutingDestination({
+      routes,
+      ...(defaultDestination ? { default: defaultDestination } : {}),
+    })
+  }
 }
 
 const whistler = new Whistler({

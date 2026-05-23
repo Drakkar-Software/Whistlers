@@ -38,6 +38,19 @@ export interface NamespaceConfig {
    * Each subscription's destination topic is automatically prefixed with `{namespaceName}-`.
    */
   subscriptions: SubscriptionConfig[]
+  /**
+   * Path to a Firebase service-account JSON key file used for this namespace's
+   * notifications. Lets each namespace target its own Firebase project.
+   *
+   * Consumed only by the bundled server (`bin/server.ts`) when
+   * `DESTINATION_TYPE=firebase`: the server initializes a dedicated
+   * firebase-admin app per namespace and routes via `NamespaceRoutingDestination`.
+   * Namespaces without this field fall back to the default app (Application
+   * Default Credentials). Ignored by the `Whistler` bridge itself and by
+   * other destination types — only a path is accepted here, never inline
+   * credentials.
+   */
+  firebaseCredentials?: string
 }
 
 export interface WhistlersConfig {

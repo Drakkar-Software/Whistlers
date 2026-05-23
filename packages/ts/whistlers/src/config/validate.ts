@@ -120,6 +120,11 @@ export function validateConfig(config: unknown): string[] {
             ...validateSubscriptions(nsSubs as unknown[], `namespaces["${nsName}"].subscriptions`)
           )
         }
+
+        const nsCreds = (nsConfig as Record<string, unknown>)["firebaseCredentials"]
+        if (nsCreds !== undefined && (typeof nsCreds !== "string" || nsCreds.trim() === "")) {
+          errors.push(`namespaces["${nsName}"].firebaseCredentials must be a non-empty string`)
+        }
       }
     }
   }

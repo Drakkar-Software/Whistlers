@@ -203,6 +203,7 @@ When `group` is set, Whistlers uses a **shared subscription** (`$share/{group}/t
 | `PostgresDestination` | `pg` | Inserts rows into a PostgreSQL table |
 | `S3Destination` | `@aws-sdk/client-s3` | Writes notification JSON objects to S3 |
 | `SSEDestination` | _none (built-in)_ | Runs an HTTP server and streams notifications to connected SSE clients |
+| `NamespaceRoutingDestination` | _none_ | Routes each notification to a per-namespace destination (e.g. one Firebase project per namespace) |
 
 Each adapter is an optional peer dependency — install only what you use. `SSEDestination` uses Node's built-in `node:http`, so it needs no extra dependency.
 
@@ -230,6 +231,75 @@ new FirebaseDestination({
 ```
 pnpm add firebase-admin
 ```
+
+#### One Firebase project per namespace
+
+To send each [namespace](#namespaces) through its own Firebase project (a separate
+service-account key), give each project its own firebase-admin app and route between them with
+`NamespaceRoutingDestination`:
+
+```typescript
+import { initializeApp, applicationDefault, cert } from "firebase-admin/app"
+import { FirebaseDestination, NamespaceRoutingDestination } from "@drakkar.software/whistlers"
+
+// default app — handles root (non-namespaced) subscriptions
+initializeApp({ credential: applicationDefault() })
+
+// one named app per namespace, each pointing at that namespace's Firebase project
+const acmeApp   = initializeApp({ credential: cert("/secrets/acme-sa.json")   }, "acme")
+const globexApp = initializeApp({ credential: cert("/secrets/globex-sa.json") }, "globex")
+
+const destination = new NamespaceRoutingDestination({
+  routes: {
+    acme:   new FirebaseDestination({ app: acmeApp }),
+    globex: new FirebaseDestination({ app: globexApp }),
+  },
+  default: new FirebaseDestination(), // root + any unrouted namespace
+})
+```
+
+`NamespaceRoutingDestination` dispatches each notification by its `namespace`. A notification with
+no matching route — root subscriptions (`namespace` undefined) or an unknown namespace — goes to
+`default`; if `default` is omitted, `send()` **throws** (surfaced through `onError`) rather than
+dropping the message. `close()` closes every wrapped adapter (deduplicated by identity). It is
+destination-agnostic — the routes can be any `DestinationAdapter`, not just Firebase.
+
+See [`examples/ts/nats-namespaces-multi-firebase.ts`](examples/ts/nats-namespaces-multi-firebase.ts).
+
+#### From JSON config / the bundled server
+
+When running the bundled server (`bin/server.ts`) with `DESTINATION_TYPE=firebase`, add a
+`firebaseCredentials` path to any namespace and the server wires the routing for you — it
+initializes a dedicated app per namespace and falls back to Application Default Credentials for
+root subscriptions and namespaces without their own key:
+
+```json
+{
+  "version": 1,
+  "subscriptions": [
+    { "name": "system-alerts", "topics": ["system.alerts.>"], "destinationTopic": "system-alerts" }
+  ],
+  "namespaces": {
+    "acme": {
+      "firebaseCredentials": "/secrets/acme-sa.json",
+      "subscriptions": [{ "name": "orders", "topics": ["orders.*"], "destinationTopic": "orders" }]
+    },
+    "globex": {
+      "firebaseCredentials": "/secrets/globex-sa.json",
+      "subscriptions": [{ "name": "orders", "topics": ["orders.*"], "destinationTopic": "orders" }]
+    }
+  }
+}
+```
+
+`firebaseCredentials` is a **path** to a service-account JSON key file — never inline the
+credentials. It is read only by the bundled server's Firebase destination; the `Whistler` bridge
+and other destination types ignore it.
+
+The default app (Application Default Credentials, e.g. `GOOGLE_APPLICATION_CREDENTIALS`) is still
+required **whenever something falls through to it** — i.e. there are root subscriptions or any
+namespace without `firebaseCredentials`. If every namespace has its own key and there are no root
+subscriptions, the server skips the default app entirely, so no ADC is needed.
 
 ### ClickHouse
 
@@ -518,7 +588,7 @@ ansible-playbook -i inventory.ini infra/ansible/site.yml
 | `whistlers_queue_url` | `nats://localhost:4222` | Broker URL |
 | `whistlers_firebase_credentials_path` | `/etc/whistlers/service-account.json` | Path to the Firebase service-account on the target host |
 | `whistlers_subscriptions` | `[]` | List of subscription objects (same schema as the JSON config) |
-| `whistlers_namespaces` | `{}` | Map of namespace name → `{ subscriptions: [] }` objects |
+| `whistlers_namespaces` | `{}` | Map of namespace name → `{ subscriptions: [], firebaseCredentials?: "" }` objects. Optional `firebaseCredentials` is a path (on the target host) to that namespace's Firebase service-account key, routing it to its own project. |
 | `whistlers_version` | `main` | Git branch, tag, or commit to deploy |
 | `whistlers_install_dir` | `/opt/whistlers` | Where the repo is cloned |
 

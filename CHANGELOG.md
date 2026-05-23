@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] — 2026-05-23
+
+### Added
+- **`NamespaceRoutingDestination`** — a destination adapter that dispatches each notification to a per-namespace `DestinationAdapter` based on `OutgoingNotification.namespace`. Options: `routes` (a `Record<string, DestinationAdapter>` keyed by namespace) and an optional `default` used for root (non-namespaced) notifications and unknown namespaces. With no matching route and no `default`, `send()` throws (surfaced through `onError`) rather than dropping the message. `close()` closes every wrapped adapter once (deduplicated by identity), awaiting all even if some reject and rethrowing the first failure. Destination-agnostic — routes can be any adapter. Exported alongside `NamespaceRoutingDestinationOptions`.
+  - Primary use case: **one Firebase project per namespace.** Initialize one firebase-admin named app per namespace (each with its own service-account key) and pass a `FirebaseDestination({ app })` per route.
+- **Per-namespace Firebase from JSON config** — `NamespaceConfig` now accepts an optional `firebaseCredentials?: string` (a path to a service-account JSON key file). The bundled server (`bin/server.ts`, `DESTINATION_TYPE=firebase`) initializes a dedicated firebase-admin app per namespace that has it and wraps everything in a `NamespaceRoutingDestination`; root subscriptions and namespaces without the field use Application Default Credentials. The default (ADC) app is initialized only when something falls through to it — when every namespace has its own `firebaseCredentials` and there are no root subscriptions, the server skips it, so ADC is not required. Validated as a non-empty string. Only a path is accepted (never inline credentials); read only by the bundled server, ignored by the `Whistler` bridge and other destination types.
+- Example `examples/ts/nats-namespaces-multi-firebase.ts` — routing each namespace to its own Firebase project via `NamespaceRoutingDestination`.
+
 ## [0.5.0] — 2026-05-22
 
 ### Added

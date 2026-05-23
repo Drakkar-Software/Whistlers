@@ -209,4 +209,46 @@ describe("validateConfig — namespaces", () => {
     })
     expect(errors.some((e) => e.includes('namespaces["tenantA"].subscriptions[0].name'))).toBe(true)
   })
+
+  it("accepts a string firebaseCredentials path", () => {
+    expect(
+      validateConfig({
+        version: 1,
+        subscriptions: [],
+        namespaces: {
+          tenantA: { subscriptions: [nsSub], firebaseCredentials: "/secrets/tenant-a.json" },
+        },
+      })
+    ).toEqual([])
+  })
+
+  it("rejects a non-string firebaseCredentials", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: {
+        tenantA: { subscriptions: [nsSub], firebaseCredentials: 42 },
+      },
+    })
+    expect(
+      errors.some((e) =>
+        e.includes('namespaces["tenantA"].firebaseCredentials must be a non-empty string')
+      )
+    ).toBe(true)
+  })
+
+  it("rejects an empty-string firebaseCredentials", () => {
+    const errors = validateConfig({
+      version: 1,
+      subscriptions: [],
+      namespaces: {
+        tenantA: { subscriptions: [nsSub], firebaseCredentials: "   " },
+      },
+    })
+    expect(
+      errors.some((e) =>
+        e.includes('namespaces["tenantA"].firebaseCredentials must be a non-empty string')
+      )
+    ).toBe(true)
+  })
 })
