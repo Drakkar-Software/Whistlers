@@ -1,4 +1,7 @@
 packages:
   - packages/ts/*
+
 onlyBuiltDependencies:
+  - '@firebase/util'
   - esbuild
+  - protobufjs
