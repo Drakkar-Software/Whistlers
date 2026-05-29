@@ -226,7 +226,28 @@ new FirebaseDestination({
 })
 ```
 
-`topic` is always set from the subscription config and cannot be overridden by `format`.
+`topic` is set from the subscription config and cannot be overridden by `format`.
+
+To target a **combination of topics** instead of a single one, return a non-empty
+`condition` from `format` — an [FCM condition expression](https://firebase.google.com/docs/cloud-messaging/send-message#send_messages_to_topics)
+(boolean over up to 5 topics). When present it is sent as `condition` and the
+`topic` is omitted (FCM accepts one or the other, never both); an absent/empty
+`condition` falls back to the normal topic send:
+
+```typescript
+// deliver to everyone subscribed to the space topic EXCEPT the author's own devices
+new FirebaseDestination({
+  format: (n) => {
+    const authorId = (n.rawPayload as { identity?: string }).identity
+    return {
+      notification: { title: "New message" },
+      ...(authorId
+        ? { condition: `'${n.topic}' in topics && !('user-${authorId}' in topics)` }
+        : {}), // no identity → plain topic send (backward-compatible)
+    }
+  },
+})
+```
 
 ```
 pnpm add firebase-admin

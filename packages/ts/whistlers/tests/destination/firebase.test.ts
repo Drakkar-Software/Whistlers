@@ -111,6 +111,26 @@ describe("FirebaseDestination", () => {
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ topic: "orders" }))
   })
 
+  it("sends with condition (and no topic) when format returns a condition", async () => {
+    const condition = "'orders' in topics && !('user-7' in topics)"
+    const format = vi.fn().mockReturnValue({ data: { id: "1" }, condition })
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ topic: "orders" }))
+    const call = mockSend.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(call?.["condition"]).toBe(condition)
+    expect(call?.["topic"]).toBeUndefined()
+    expect(call?.["data"]).toEqual({ id: "1" })
+  })
+
+  it("falls back to topic send when condition is empty", async () => {
+    const format = vi.fn().mockReturnValue({ data: {}, condition: "" })
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ topic: "orders" }))
+    const call = mockSend.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(call?.["topic"]).toBe("orders")
+    expect(call?.["condition"]).toBeUndefined()
+  })
+
   it("propagates errors thrown by format callback", async () => {
     const format = vi.fn().mockImplementation(() => {
       throw new Error("formatter crashed")

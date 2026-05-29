@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] — 2026-05-29
+
+### Added
+- **FCM condition addressing in `FirebaseDestination`** — the `format` callback may now return a non-empty `condition` (an [FCM condition expression](https://firebase.google.com/docs/cloud-messaging/send-message#send_messages_to_topics), boolean over up to 5 topics, e.g. `"'A' in topics && !('B' in topics)"`). When present, the message is sent with `condition` and **without** `topic` (FCM accepts one or the other, never both); an absent or empty-string `condition` falls back to the normal topic send, so existing formatters are unaffected. This enables targeting a *combination* of topics — e.g. delivering to a topic's subscribers while excluding those also subscribed to another topic. `topic` still cannot be set by `format` (it is stripped, as before).
+
+### Changed
+- `FirebaseDestination.send` strips both `topic` and `condition` from the formatted body before re-applying exactly one: `condition` when non-empty, otherwise the subscription's `topic`.
+
 ## [0.6.0] — 2026-05-23
 
 ### Added
