@@ -3,7 +3,13 @@ import { FirebaseDestination } from "../../src/destination/firebase.js"
 import type { OutgoingNotification } from "../../src/destination/base.js"
 
 const mockSend = vi.fn().mockResolvedValue("message-id")
-const mockGetMessaging = vi.fn(() => ({ send: mockSend }))
+const batchOk = (n: number) => ({
+  successCount: n,
+  failureCount: 0,
+  responses: Array.from({ length: n }, () => ({ success: true })),
+})
+const mockSendEach = vi.fn().mockResolvedValue(batchOk(2))
+const mockGetMessaging = vi.fn(() => ({ send: mockSend, sendEach: mockSendEach }))
 
 vi.mock("firebase-admin/messaging", () => ({
   getMessaging: mockGetMessaging,
@@ -12,7 +18,8 @@ vi.mock("firebase-admin/messaging", () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mockSend.mockResolvedValue("message-id")
-  mockGetMessaging.mockReturnValue({ send: mockSend })
+  mockSendEach.mockResolvedValue(batchOk(2))
+  mockGetMessaging.mockReturnValue({ send: mockSend, sendEach: mockSendEach })
 })
 
 function makeNotification(overrides: Partial<OutgoingNotification> = {}): OutgoingNotification {
@@ -137,5 +144,87 @@ describe("FirebaseDestination", () => {
     })
     const dest = new FirebaseDestination({ format })
     await expect(dest.send(makeNotification())).rejects.toThrow("formatter crashed")
+  })
+
+  it("sends each message via sendEach when format returns an array", async () => {
+    const format = vi.fn().mockReturnValue([
+      { notification: { title: "Placeholder" } },
+      { data: { id: "1" } },
+    ])
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ topic: "orders" }))
+    expect(mockSend).not.toHaveBeenCalled()
+    expect(mockSendEach).toHaveBeenCalledTimes(1)
+    const arg = mockSendEach.mock.calls[0]?.[0] as Record<string, unknown>[]
+    expect(arg).toHaveLength(2)
+    expect(arg[0]).toEqual({ notification: { title: "Placeholder" }, topic: "orders" })
+    expect(arg[1]).toEqual({ data: { id: "1" }, topic: "orders" })
+  })
+
+  it("addresses each array element independently (condition vs topic)", async () => {
+    const condition = "'orders' in topics && !('user-7' in topics)"
+    const format = vi.fn().mockReturnValue([
+      { notification: { title: "Placeholder" }, condition },
+      { data: { id: "1" }, condition },
+    ])
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ topic: "orders" }))
+    const arg = mockSendEach.mock.calls[0]?.[0] as Record<string, unknown>[]
+    expect(arg[0]).toEqual({ notification: { title: "Placeholder" }, condition })
+    expect(arg[0]).not.toHaveProperty("topic")
+    expect(arg[1]).toEqual({ data: { id: "1" }, condition })
+    expect(arg[1]).not.toHaveProperty("topic")
+  })
+
+  it("routes a single-element array through send, not sendEach", async () => {
+    const format = vi.fn().mockReturnValue([{ data: { id: "1" } }])
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification({ topic: "orders" }))
+    expect(mockSendEach).not.toHaveBeenCalled()
+    expect(mockSend).toHaveBeenCalledWith({ data: { id: "1" }, topic: "orders" })
+  })
+
+  it("sends nothing when format returns an empty array", async () => {
+    const format = vi.fn().mockReturnValue([])
+    const dest = new FirebaseDestination({ format })
+    await dest.send(makeNotification())
+    expect(mockSend).not.toHaveBeenCalled()
+    expect(mockSendEach).not.toHaveBeenCalled()
+  })
+
+  it("resolves on partial batch failure by default (a delivered message survives)", async () => {
+    mockSendEach.mockResolvedValueOnce({
+      successCount: 1,
+      failureCount: 1,
+      responses: [{ success: true }, { success: false, error: new Error("bad token") }],
+    })
+    const format = vi.fn().mockReturnValue([{ data: { a: "1" } }, { data: { b: "2" } }])
+    const dest = new FirebaseDestination({ format })
+    await expect(dest.send(makeNotification())).resolves.toBeUndefined()
+  })
+
+  it("throws on partial batch failure when multiSendFailure is 'throw'", async () => {
+    mockSendEach.mockResolvedValueOnce({
+      successCount: 1,
+      failureCount: 1,
+      responses: [{ success: true }, { success: false, error: new Error("bad token") }],
+    })
+    const format = vi.fn().mockReturnValue([{ data: { a: "1" } }, { data: { b: "2" } }])
+    const dest = new FirebaseDestination({ format, multiSendFailure: "throw" })
+    await expect(dest.send(makeNotification())).rejects.toThrow(/1\/2 FCM messages failed/)
+  })
+
+  it("throws when every message in the batch fails (regardless of policy)", async () => {
+    mockSendEach.mockResolvedValueOnce({
+      successCount: 0,
+      failureCount: 2,
+      responses: [
+        { success: false, error: new Error("e0") },
+        { success: false, error: new Error("e1") },
+      ],
+    })
+    const format = vi.fn().mockReturnValue([{ data: { a: "1" } }, { data: { b: "2" } }])
+    const dest = new FirebaseDestination({ format })
+    await expect(dest.send(makeNotification())).rejects.toThrow(/2\/2 FCM messages failed/)
   })
 })

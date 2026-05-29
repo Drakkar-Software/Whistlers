@@ -21,9 +21,29 @@ export interface FirebaseDestinationOptions {
    * once). An absent/empty `condition` falls back to the default topic send, so a
    * formatter can opt into exclusion per-message and otherwise behave as before.
    *
+   * **Returning an ARRAY** sends one FCM message per element for a single event (via
+   * `messaging.sendEach`). Each element is addressed INDEPENDENTLY — the same
+   * `condition`/`topic` rule above is applied per element — so a formatter can, e.g.,
+   * fan out a `notification` placeholder plus a `data`-only message, both carrying the
+   * same exclusion `condition`. A single object (the common case) is unchanged: exactly
+   * one `messaging.send`. An empty array sends nothing. NOTE: FCM does not guarantee
+   * delivery ordering between the messages in a batch.
+   *
    * When omitted, `notification` and `data` are forwarded from the incoming notification.
    */
-  format?: (notification: OutgoingNotification) => Record<string, unknown>
+  format?: (notification: OutgoingNotification) => Record<string, unknown> | Record<string, unknown>[]
+  /**
+   * How to handle a MULTI-message batch (an array-returning `format`) where SOME — but
+   * not all — messages fail to send:
+   * - `"resolve"` (default): swallow partial failures, so a message that DID deliver
+   *   isn't undone by a sibling's failure (e.g. a delivered placeholder survives a
+   *   failed upgrade).
+   * - `"throw"`: reject if ANY message in the batch fails.
+   *
+   * A batch where EVERY message fails always rejects, regardless of this setting.
+   * Single-message sends are unaffected — they reject on failure exactly as before.
+   */
+  multiSendFailure?: "resolve" | "throw"
 }
 
 /**
@@ -38,7 +58,7 @@ export class FirebaseDestination implements DestinationAdapter {
     const { getMessaging } = await import("firebase-admin/messaging")
     const messaging = this.opts.app ? getMessaging(this.opts.app) : getMessaging()
 
-    const body: Record<string, unknown> = this.opts.format
+    const formatted: Record<string, unknown> | Record<string, unknown>[] = this.opts.format
       ? this.opts.format(notification)
       : {
           ...(notification.notification
@@ -54,15 +74,51 @@ export class FirebaseDestination implements DestinationAdapter {
             : {}),
         }
 
-    // A formatter may return a `condition` (FCM topic-combination expression) to
-    // exclude/combine topics. FCM accepts EITHER `topic` OR `condition`, never both,
-    // so a non-empty condition replaces the topic; otherwise we send by topic. The
-    // formatter can never set `topic` directly (stripped here, as documented).
+    // A formatter may return a single body (the common case) or an array of bodies to
+    // send several messages for one event (e.g. a placeholder + a data-only upgrade).
+    const bodies = Array.isArray(formatted) ? formatted : [formatted]
+    if (bodies.length === 0) return
+    const messages = bodies.map((body) => this.resolveAddressing(body, notification.topic))
+
+    // One message → a single `send` (unchanged behavior, rejects on failure). Several →
+    // `sendEach` (one batch round trip).
+    if (messages.length === 1) {
+      await messaging.send(messages[0]!)
+      return
+    }
+    const res = await messaging.sendEach(messages)
+    if (res.failureCount === 0) return
+    // Surface failures when EVERY message failed, or when the consumer opted into
+    // strict ("throw") handling; otherwise a delivered message isn't undone by a
+    // sibling's failure (default "resolve").
+    const allFailed = res.failureCount === messages.length
+    if (allFailed || this.opts.multiSendFailure === "throw") {
+      const detail = res.responses
+        .map((r, i) => (r.error ? `#${i}: ${r.error.message}` : null))
+        .filter(Boolean)
+        .join("; ")
+      throw new Error(
+        `FirebaseDestination: ${res.failureCount}/${messages.length} FCM messages failed: ${detail}`,
+      )
+    }
+  }
+
+  /**
+   * Re-apply FCM addressing to a formatted body: FCM accepts EITHER `topic` OR
+   * `condition`, never both, so a non-empty `condition` replaces the topic; otherwise
+   * the subscription's `topic` is used. The formatter can never set `topic` directly
+   * (stripped here, as documented). Applied per element so each message in a
+   * multi-message batch is addressed independently.
+   */
+  private resolveAddressing(
+    body: Record<string, unknown>,
+    topic: string,
+  ): import("firebase-admin/messaging").Message {
     const { condition, topic: _ignoredTopic, ...rest } = body
-    await messaging.send(
+    const message =
       typeof condition === "string" && condition.length > 0
         ? { ...rest, condition }
-        : { ...rest, topic: notification.topic },
-    )
+        : { ...rest, topic }
+    return message as import("firebase-admin/messaging").Message
   }
 }

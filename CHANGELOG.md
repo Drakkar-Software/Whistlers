@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] — 2026-05-29
+
+### Added
+- **Multi-message sends in `FirebaseDestination`** — the `format` callback may now return an **array** of message bodies; each element is sent as its own FCM message (via `messaging.sendEach`, one batch round trip) and is addressed **independently** — the existing `condition`-vs-`topic` rule is applied per element. This enables fanning out several messages for a single event, e.g. a `notification` placeholder the OS shows even when the app can't run plus a `data`-only message that wakes a background handler to replace it, both carrying the same exclusion `condition`. A single object (the common case) is unchanged — exactly one `messaging.send` — and an empty array sends nothing. FCM does not guarantee delivery ordering between the messages in a batch.
+- **`FirebaseDestinationOptions.multiSendFailure`** (`"resolve" | "throw"`, default `"resolve"`) — controls how a multi-message batch with *some* (not all) failures is handled: `"resolve"` swallows partial failures so a delivered message isn't undone by a sibling's failure; `"throw"` rejects if any message fails. A batch where *every* message fails always rejects, regardless of the setting. Single-message sends are unaffected (they reject on failure as before).
+
+### Changed
+- `FirebaseDestination.send` normalizes the formatter output to a list and dispatches `messaging.send` for one message or `messaging.sendEach` for several; the per-message `topic`/`condition` resolution is unchanged.
+
 ## [0.7.0] — 2026-05-29
 
 ### Added

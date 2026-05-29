@@ -253,6 +253,43 @@ new FirebaseDestination({
 pnpm add firebase-admin
 ```
 
+#### Multiple messages per event
+
+Return an **array** from `format` to send several FCM messages for a single event.
+Each element is addressed independently (the same `condition`/`topic` rule applies per
+element), so you can fan out, e.g., a `notification` placeholder the OS shows
+immediately plus a `data`-only message that wakes the app to replace it with richer
+content — both carrying the same exclusion `condition`:
+
+```typescript
+new FirebaseDestination({
+  format: (n) => [
+    // 1. Placeholder — OS-displayed even if the app can't run (force-quit / Doze).
+    {
+      notification: { title: "New message", body: "New message in another room" },
+      android: { notification: { tag: String((n.rawPayload as Record<string, unknown>)["roomId"]) } },
+    },
+    // 2. Data-only upgrade — wakes the background handler to show the real content.
+    {
+      data: { roomId: String((n.rawPayload as Record<string, unknown>)["roomId"]) },
+      android: { priority: "high" },
+    },
+  ],
+})
+```
+
+A single object (the common case) is unchanged — exactly one `messaging.send`. An array
+goes through `messaging.sendEach` (one batch round trip); an empty array sends nothing.
+By default a **partial** batch failure resolves (a delivered message isn't undone by a
+sibling's failure) — pass `multiSendFailure: "throw"` to reject if any message fails; a
+batch where *every* message fails always rejects.
+
+> **Ordering caveat:** FCM does not guarantee delivery order between the messages in a
+> batch. In the placeholder/upgrade pattern the OS-rendered placeholder almost always
+> lands before the slower data-driven upgrade, but the reverse race is possible — align
+> the placeholder's `android.notification.tag` with the client's replacement id and have
+> the client cancel-then-replace to make the swap deterministic.
+
 #### One Firebase project per namespace
 
 To send each [namespace](#namespaces) through its own Firebase project (a separate
