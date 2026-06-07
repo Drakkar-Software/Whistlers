@@ -65,8 +65,116 @@ function validateSubscriptions(subs: unknown[], prefix: string): string[] {
         }
       }
     }
+
+    if (sub["fcm"] !== undefined) {
+      errors.push(...validateFcm(sub["fcm"], `${subPrefix}.fcm`))
+    }
   }
 
+  return errors
+}
+
+/**
+ * Validate a subscription's `fcm` template config. Checks the `messages` array and
+ * walks every template node so malformed `FieldRef`/`Coalesce`/`ConditionTemplate`
+ * leaves (and bad `match`/`condition` regexes) are caught at load time.
+ */
+function validateFcm(fcm: unknown, prefix: string): string[] {
+  const errors: string[] = []
+  if (typeof fcm !== "object" || fcm === null) {
+    return [`${prefix} must be an object`]
+  }
+  const messages = (fcm as Record<string, unknown>)["messages"]
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [`${prefix}.messages must be a non-empty array`]
+  }
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (typeof msg !== "object" || msg === null || Array.isArray(msg)) {
+      errors.push(`${prefix}.messages[${i}] must be an object`)
+    } else {
+      errors.push(...validateTemplateNode(msg, `${prefix}.messages[${i}]`))
+    }
+  }
+  return errors
+}
+
+function validateTemplateNode(node: unknown, prefix: string): string[] {
+  const errors: string[] = []
+  if (node === null || typeof node !== "object") return errors // literal scalar
+  if (Array.isArray(node)) {
+    node.forEach((el, i) => errors.push(...validateTemplateNode(el, `${prefix}[${i}]`)))
+    return errors
+  }
+  const obj = node as Record<string, unknown>
+
+  // A ConditionTemplate node is `{ condition: { template, vars? } }` — detected by the
+  // nested `template`, so a plain FCM message carrying a `condition` STRING key (the
+  // common case) falls through to generic recursion instead. Mirrors `isCondition`.
+  const condNode = obj["condition"]
+  if (
+    typeof condNode === "object" &&
+    condNode !== null &&
+    "template" in (condNode as Record<string, unknown>)
+  ) {
+    const cond = condNode as Record<string, unknown>
+    if (typeof cond["template"] !== "string") {
+      errors.push(`${prefix}.condition.template must be a string`)
+    }
+    if (cond["vars"] !== undefined) {
+      if (typeof cond["vars"] !== "object" || cond["vars"] === null) {
+        errors.push(`${prefix}.condition.vars must be an object`)
+      } else {
+        for (const [name, ref] of Object.entries(cond["vars"] as Record<string, unknown>)) {
+          errors.push(...validateFieldRef(ref, `${prefix}.condition.vars.${name}`))
+        }
+      }
+    }
+    return errors
+  }
+
+  if ("coalesce" in obj) {
+    if (!Array.isArray(obj["coalesce"]) || obj["coalesce"].length === 0) {
+      errors.push(`${prefix}.coalesce must be a non-empty array`)
+    } else {
+      ;(obj["coalesce"] as unknown[]).forEach((item, i) => {
+        if (typeof item === "string") return
+        errors.push(...validateFieldRef(item, `${prefix}.coalesce[${i}]`))
+      })
+    }
+    return errors
+  }
+
+  if ("field" in obj) {
+    return validateFieldRef(obj, prefix)
+  }
+
+  for (const [k, v] of Object.entries(obj)) {
+    errors.push(...validateTemplateNode(v, `${prefix}.${k}`))
+  }
+  return errors
+}
+
+function validateFieldRef(ref: unknown, prefix: string): string[] {
+  const errors: string[] = []
+  if (typeof ref !== "object" || ref === null) {
+    return [`${prefix} must be a field-reference object`]
+  }
+  const r = ref as Record<string, unknown>
+  if (typeof r["field"] !== "string" || r["field"] === "") {
+    errors.push(`${prefix}.field must be a non-empty string`)
+  }
+  if (r["match"] !== undefined) {
+    if (typeof r["match"] !== "string") {
+      errors.push(`${prefix}.match must be a string`)
+    } else {
+      try {
+        new RegExp(r["match"])
+      } catch {
+        errors.push(`${prefix}.match must be a valid regular expression`)
+      }
+    }
+  }
   return errors
 }
 

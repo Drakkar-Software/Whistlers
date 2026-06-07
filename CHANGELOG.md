@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] — 2026-06-07
+
+### Added
+- **Declarative FCM message templating (`SubscriptionConfig.fcm`)** — a subscription may now carry an `fcm: { messages: FcmMessageTemplate[] }` config that the bundled server (`bin/server.ts`, `DESTINATION_TYPE=firebase`) compiles into the `FirebaseDestination` `format`. Templates express what previously required a custom `format` function in code: **nested** payload fields (`{ field: "params.productId" }`), `android`/`apns` options, FCM self-exclusion `condition`s (`{ condition: { template, vars } }` interpolating `{topic}` + regex-guarded payload vars), and multi-message **arrays** (e.g. a visible placeholder + a data-only upgrade). Template nodes — `FieldRef`, `Coalesce`, `ConditionTemplate` — and the `renderFcmMessages` compiler are exported. This lets the official `drakkarsoftware/whistlers` image run product-specific push shaping entirely from a config file, with no custom build. Omitting `fcm` is fully backward-compatible (`notification` + `dataFields` forwarding unchanged).
+- **`OutgoingNotification.subscription`** — the `Whistler` bridge now attaches the matched `SubscriptionConfig` to each notification so config-driven destinations (such as the FCM templating above) can apply per-subscription formatting.
+
+### Changed
+- The bundled server passes a shared FCM `format` to every `FirebaseDestination` (per-namespace routes and the default app) that renders `subscription.fcm` when present and otherwise forwards `notification`/`data` exactly as before.
+
 ## [0.8.0] — 2026-05-29
 
 ### Added

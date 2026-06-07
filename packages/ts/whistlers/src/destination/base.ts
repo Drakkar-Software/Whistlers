@@ -15,6 +15,12 @@ export interface OutgoingNotification {
   data?: Record<string, string>
   /** The parsed payload from the queue message. */
   rawPayload: unknown
+  /**
+   * The subscription config that matched this message. Lets config-driven
+   * destinations (e.g. the bundled server's FCM templating via `subscription.fcm`)
+   * apply per-subscription formatting. Set by the `Whistler` bridge.
+   */
+  subscription?: import("../config/schema.js").SubscriptionConfig
 }
 
 export interface DestinationAdapter {

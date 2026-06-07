@@ -4,10 +4,26 @@ import { MqttQueueAdapter } from "../queue/mqtt.js"
 import { FirebaseDestination } from "../destination/firebase.js"
 import { SSEDestination } from "../destination/sse.js"
 import { NamespaceRoutingDestination } from "../destination/namespace-routing.js"
-import type { DestinationAdapter } from "../destination/base.js"
+import type { DestinationAdapter, OutgoingNotification } from "../destination/base.js"
 import { Whistler } from "../bridge.js"
 import { parseConfigJson } from "../config/loader.js"
+import { renderFcmMessages } from "../config/fcm-template.js"
 import type { WhistlersConfig } from "../config/schema.js"
+
+/**
+ * FCM `format` shared by every FirebaseDestination: when the matched subscription
+ * declares an `fcm` template, render it; otherwise fall back to forwarding
+ * `notification` + `data` (FirebaseDestination's default behaviour).
+ */
+function formatFcm(n: OutgoingNotification): Record<string, unknown> | Record<string, unknown>[] {
+  if (n.subscription?.fcm) return renderFcmMessages(n)
+  return {
+    ...(n.notification
+      ? { notification: { title: n.notification.title, body: n.notification.body } }
+      : {}),
+    ...(n.data && Object.keys(n.data).length > 0 ? { data: n.data } : {}),
+  }
+}
 
 const configPath = process.argv[2] ?? "/etc/whistlers/config.json"
 
@@ -48,7 +64,7 @@ if (destinationType === "sse") {
   for (const [namespace, nsConfig] of namespaces) {
     if (nsConfig.firebaseCredentials) {
       const app = initializeApp({ credential: cert(nsConfig.firebaseCredentials) }, namespace)
-      routes[namespace] = new FirebaseDestination({ app })
+      routes[namespace] = new FirebaseDestination({ app, format: formatFcm })
       console.log(
         `[info] Namespace "${namespace}" → Firebase project from ${nsConfig.firebaseCredentials}`
       )
@@ -66,7 +82,7 @@ if (destinationType === "sse") {
   let defaultDestination: FirebaseDestination | undefined
   if (needsDefaultApp) {
     initializeApp({ credential: applicationDefault() })
-    defaultDestination = new FirebaseDestination()
+    defaultDestination = new FirebaseDestination({ format: formatFcm })
   }
 
   if (Object.keys(routes).length === 0) {

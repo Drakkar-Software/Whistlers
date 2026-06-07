@@ -107,6 +107,53 @@ const config = parseConfigJson(readFileSync("whistlers.json", "utf8"))
 | `destinationTopic` | `string` | | Destination topic name. Defaults to the sanitized source topic (`.` and `/` → `-`). Call `sanitizeTopic(topic)` for custom transformations. |
 | `notification` | `{ title?, body? }` | | Static notification content passed through to the destination |
 | `dataFields` | `string[]` | | Top-level payload fields to forward as string key/value pairs |
+| `fcm` | `FcmConfig` | | Declarative FCM message template(s). See [Declarative FCM templating](#declarative-fcm-templating) |
+
+### Declarative FCM templating
+
+For richer FCM shaping than `notification` + `dataFields` allow — **nested** payload
+fields, `android`/`apns` options, self-exclusion `condition`s, and multi-message
+**arrays** (e.g. a visible placeholder + a data-only upgrade) — a subscription can
+carry an `fcm` template. The bundled server (`bin/server.ts`, `DESTINATION_TYPE=firebase`)
+compiles it into the `FirebaseDestination` `format`, so product-specific push shaping
+lives entirely in config — no custom code or image needed. SSE and other destinations
+ignore `fcm`.
+
+An `fcm` config is `{ messages: FcmMessageTemplate[] }`. Each message mirrors an FCM
+message body, but string leaves may be **template nodes** instead of literals:
+
+| Node | Shape | Resolves to |
+|---|---|---|
+| `FieldRef` | `{ field, default?, unless?, omitIfEmpty?, match? }` | the payload value at dotted path `field` (objects/missing → `default`/`""`); `unless` maps a sentinel value to the default; `omitIfEmpty` drops the surrounding key when empty |
+| `Coalesce` | `{ coalesce: (string\|FieldRef)[], default?, omitIfEmpty? }` | the first non-empty field |
+| `ConditionTemplate` | `{ condition: { template, vars? } }` | an FCM `condition` string built from `{topic}` + resolved `vars`; the key is **omitted** (→ plain topic addressing) unless every var resolves non-empty and passes its `match` guard |
+
+An object emptied entirely by omission is itself dropped. Example — a data-only push
+forwarding a nested id, and a visible push that excludes the author's own devices:
+
+```json
+{
+  "version": 1,
+  "subscriptions": [
+    {
+      "name": "signals",
+      "topics": ["app.signals.>"],
+      "fcm": {
+        "messages": [
+          {
+            "data": { "type": "signals.changed", "id": { "field": "params.productId", "default": "" } },
+            "android": { "priority": "high" },
+            "apns": { "headers": { "apns-push-type": "background" }, "payload": { "aps": { "content-available": 1 } } }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+`{topic}` interpolates the (namespace-prefixed) destination topic. `match` guards
+against injection — a var that fails its regex is treated as unresolved.
 
 ### Namespaces
 

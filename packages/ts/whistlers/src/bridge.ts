@@ -100,6 +100,7 @@ export class Whistler {
           notification: sub.notification,
           rawPayload,
           ...(data ? { data } : {}),
+          subscription: sub,
         }
 
         try {
