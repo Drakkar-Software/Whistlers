@@ -23,10 +23,22 @@ export { NamespaceRoutingDestination } from "./destination/namespace-routing.js"
 export type { NamespaceRoutingDestinationOptions } from "./destination/namespace-routing.js"
 
 // Config
-export type { WhistlersConfig, NamespaceConfig, SubscriptionConfig, NotificationTemplate } from "./config/schema.js"
+export type {
+  WhistlersConfig,
+  NamespaceConfig,
+  SubscriptionConfig,
+  NotificationTemplate,
+  FcmConfig,
+  FcmMessageTemplate,
+  FcmTemplateValue,
+  FieldRef,
+  Coalesce,
+  ConditionTemplate,
+} from "./config/schema.js"
 export { validateConfig, assertValidConfig } from "./config/validate.js"
 export { createConfig, parseConfigJson } from "./config/loader.js"
 export type { CreateConfigOptions } from "./config/loader.js"
+export { renderFcmMessages } from "./config/fcm-template.js"
 
 // Bridge
 export { Whistler, sanitizeTopic } from "./bridge.js"
