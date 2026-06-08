@@ -6,7 +6,9 @@ RUN corepack enable pnpm
 WORKDIR /app
 
 # Restore dependencies before copying source for layer-cache efficiency
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+# `.npmrc` (node-linker=hoisted) MUST be copied before install so the build
+# produces a flat root `node_modules` the runtime stage can copy whole.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json .npmrc ./
 COPY packages/ts/whistlers/package.json packages/ts/whistlers/tsconfig.json ./packages/ts/whistlers/
 RUN pnpm install --frozen-lockfile
 

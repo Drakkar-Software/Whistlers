@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.1] — 2026-06-08
+
+### Fixed
+- **Docker image: runtime dependencies no longer resolve to `ERR_MODULE_NOT_FOUND`.** The runtime stage copies only the root `node_modules` next to `dist`, but pnpm's default isolated linker symlinked the `whistlers` package's own dependencies under `packages/ts/whistlers/node_modules` (never copied into the image). The bundled server (`dist/bin/server.js`) therefore crash-looped at the first lazy import — `@nats-io/transport-node` for any queue (`DESTINATION_TYPE=sse` **and** `firebase`) and `firebase-admin` for `DESTINATION_TYPE=firebase` — so the official image could not run as a NATS/MQTT bridge at all. Added a root `.npmrc` with `node-linker=hoisted` — and copy it into the Dockerfile build stage before `pnpm install` — so the build produces a flat root `node_modules` containing every runtime dependency (queue adapters + the optional `firebase-admin` peer), which the runtime stage's existing `COPY` then captures. No source or API change.
+
 ## [0.9.0] — 2026-06-07
 
 ### Added
